@@ -77,6 +77,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -150,6 +151,10 @@ fun AdminDashboardScreen(
     var showBroadcastDialog by remember { mutableStateOf(false) }
     var userToDelete by remember { mutableStateOf<AdminUserAccount?>(null) }
 
+    LaunchedEffect(Unit) {
+        viewModel.syncAdminDataFromCloud()
+    }
+
     CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
         Scaffold(
             topBar = {
@@ -181,6 +186,16 @@ fun AdminDashboardScreen(
                         }
                     },
                     actions = {
+                        IconButton(onClick = {
+                            viewModel.syncAdminDataFromCloud()
+                            Toast.makeText(context, "جاري مزامنة بيانات المشتركين والمعاملات من السحابة...", Toast.LENGTH_SHORT).show()
+                        }) {
+                            Icon(
+                                imageVector = Icons.Default.Refresh,
+                                contentDescription = "تحديث ومزامنة السحابة",
+                                tint = Color(0xFF6366F1)
+                            )
+                        }
                         IconButton(onClick = { showBroadcastDialog = true }) {
                             Icon(
                                 imageVector = Icons.Default.NotificationsActive,
@@ -530,17 +545,21 @@ private fun AdminUserCard(
     val sdf = SimpleDateFormat("yyyy/MM/dd", Locale.getDefault())
     val expiryFormatted = if (user.subscriptionExpiry > 0) sdf.format(Date(user.subscriptionExpiry)) else "غير محدد"
 
-    val statusColor = when (user.status) {
-        "ACTIVE" -> LahoGreen
-        "SUSPENDED" -> TawthiqAmber
-        "BANNED" -> LanaRed
+    val isActive = user.status.equals("ACTIVE", ignoreCase = true) || user.status == "نشط"
+    val isSuspended = user.status.equals("SUSPENDED", ignoreCase = true) || user.status == "موقوف"
+    val isBanned = user.status.equals("BANNED", ignoreCase = true) || user.status == "محظور"
+
+    val statusColor = when {
+        isActive -> LahoGreen
+        isSuspended -> TawthiqAmber
+        isBanned -> LanaRed
         else -> MaterialTheme.colorScheme.onSurfaceVariant
     }
 
-    val statusText = when (user.status) {
-        "ACTIVE" -> "نشط ✓"
-        "SUSPENDED" -> "موقوف ⏸"
-        "BANNED" -> "محظور 🚫"
+    val statusText = when {
+        isActive -> "نشط ✓"
+        isSuspended -> "موقوف ⏸"
+        isBanned -> "محظور 🚫"
         else -> user.status
     }
 
@@ -680,7 +699,7 @@ private fun AdminUserCard(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(6.dp)
             ) {
-                if (user.status != "ACTIVE") {
+                if (!isActive) {
                     Button(
                         onClick = onActivate,
                         colors = ButtonDefaults.buttonColors(containerColor = LahoGreen),
@@ -694,7 +713,7 @@ private fun AdminUserCard(
                     }
                 }
 
-                if (user.status != "SUSPENDED") {
+                if (!isSuspended) {
                     OutlinedButton(
                         onClick = onSuspend,
                         shape = RoundedCornerShape(8.dp),
@@ -707,7 +726,7 @@ private fun AdminUserCard(
                     }
                 }
 
-                if (user.status != "BANNED") {
+                if (!isBanned) {
                     OutlinedButton(
                         onClick = onBan,
                         shape = RoundedCornerShape(8.dp),

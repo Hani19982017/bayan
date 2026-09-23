@@ -27,7 +27,10 @@ import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Email
 import androidx.compose.material.icons.filled.Key
 import androidx.compose.material.icons.filled.Lock
-import androidx.compose.material.icons.filled.Security
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
+import androidx.compose.material.icons.filled.VerifiedUser
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.Button
@@ -117,7 +120,7 @@ fun AdminLoginScreen(
                     // 1. Admin Shield Icon & Badge
                     Box(
                         modifier = Modifier
-                            .size(90.dp)
+                            .size(72.dp)
                             .clip(CircleShape)
                             .background(
                                 Brush.linearGradient(
@@ -131,15 +134,15 @@ fun AdminLoginScreen(
                             imageVector = Icons.Default.AdminPanelSettings,
                             contentDescription = "Admin Shield",
                             tint = Color.White,
-                            modifier = Modifier.size(52.dp)
+                            modifier = Modifier.size(42.dp)
                         )
                     }
 
-                    Spacer(modifier = Modifier.height(16.dp))
+                    Spacer(modifier = Modifier.height(14.dp))
 
                     Text(
-                        text = "إدارة توثيق — Admin Portal",
-                        fontSize = 24.sp,
+                        text = "إدارة البيان — Admin Portal",
+                        fontSize = 22.sp,
                         fontWeight = FontWeight.Bold,
                         color = Color.White,
                         textAlign = TextAlign.Center
@@ -158,7 +161,7 @@ fun AdminLoginScreen(
                             horizontalArrangement = Arrangement.spacedBy(6.dp)
                         ) {
                             Icon(
-                                imageVector = Icons.Default.Security,
+                                imageVector = Icons.Default.Lock,
                                 contentDescription = null,
                                 tint = Color(0xFFA5B4FC),
                                 modifier = Modifier.size(16.dp)
@@ -172,7 +175,7 @@ fun AdminLoginScreen(
                         }
                     }
 
-                    Spacer(modifier = Modifier.height(32.dp))
+                    Spacer(modifier = Modifier.height(20.dp))
 
                     // 2. Authentication Card
                     Card(
@@ -181,27 +184,94 @@ fun AdminLoginScreen(
                             .border(1.dp, Color(0xFF374151), RoundedCornerShape(20.dp)),
                         shape = RoundedCornerShape(20.dp),
                         colors = CardDefaults.cardColors(
-                            containerColor = Color(0xFF1E293B).copy(alpha = 0.85f)
+                            containerColor = Color(0xFF1E293B).copy(alpha = 0.95f)
                         ),
                         elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
                     ) {
                         Column(
-                            modifier = Modifier.padding(24.dp),
-                            verticalArrangement = Arrangement.spacedBy(16.dp)
+                            modifier = Modifier.padding(20.dp),
+                            verticalArrangement = Arrangement.spacedBy(14.dp)
                         ) {
                             Text(
-                                text = "تسجيل دخول المشرف",
-                                fontSize = 18.sp,
+                                text = "تسجيل دخول المشرف والمالك",
+                                fontSize = 17.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = Color.White
                             )
 
-                            Text(
-                                text = "أدخل بيانات اعتماد المشرف المسجلة في Firebase للوصول للوحة التحكم",
-                                fontSize = 12.sp,
-                                color = Color(0xFF94A3B8),
-                                lineHeight = 18.sp
-                            )
+                            // 🌟 FAST-TRACK OWNER LOGIN (PROMINENT AT TOP OF CARD)
+                            Surface(
+                                onClick = {
+                                    isLoading = true
+                                    scope.launch {
+                                        delay(350)
+                                        adminEmail = "familymam91@gmail.com"
+                                        adminPassword = "••••••••"
+                                        viewModel.loginWithEmail("familymam91@gmail.com", merchant = "مالك التطبيق", store = "الإدارة العامة للبيان")
+                                        viewModel.login("familymam91@gmail.com", "مشرف النظام — مالك التطبيق")
+                                        Toast.makeText(context, "تم اعتماد دخول مالك التطبيق (familymam91@gmail.com) بنجاح ✨", Toast.LENGTH_SHORT).show()
+                                        isLoading = false
+                                        onLoginSuccess()
+                                    }
+                                },
+                                shape = RoundedCornerShape(14.dp),
+                                color = Color(0xFF0D9488).copy(alpha = 0.25f),
+                                border = BorderStroke(1.5.dp, Color(0xFF14B8A6)),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .testTag("owner_quick_login_button")
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                                ) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(42.dp)
+                                            .clip(CircleShape)
+                                            .background(Color(0xFF14B8A6)),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.VerifiedUser,
+                                            contentDescription = null,
+                                            tint = Color.White,
+                                            modifier = Modifier.size(24.dp)
+                                        )
+                                    }
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            text = "دخول فوري كمالك التطبيق",
+                                            fontSize = 15.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = Color.White
+                                        )
+                                        Text(
+                                            text = "familymam91@gmail.com",
+                                            fontSize = 12.sp,
+                                            fontWeight = FontWeight.SemiBold,
+                                            color = Color(0xFF5EEAD4)
+                                        )
+                                    }
+                                    Icon(
+                                        imageVector = Icons.AutoMirrored.Filled.ArrowForward,
+                                        contentDescription = null,
+                                        tint = Color(0xFF5EEAD4),
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                }
+                            }
+
+                            Row(
+                                modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                HorizontalDivider(modifier = Modifier.weight(1f), color = Color(0xFF475569))
+                                Text("أو تسجيل الدخول اليدوي", fontSize = 11.sp, color = Color(0xFF94A3B8))
+                                HorizontalDivider(modifier = Modifier.weight(1f), color = Color(0xFF475569))
+                            }
 
                             // Error Message Box
                             AnimatedVisibility(visible = errorMessage != null) {
@@ -380,9 +450,10 @@ fun AdminLoginScreen(
                                 onClick = {
                                     isLoading = true
                                     scope.launch {
-                                        delay(400)
+                                        delay(350)
                                         adminEmail = "familymam91@gmail.com"
                                         adminPassword = "••••••••"
+                                        viewModel.loginWithEmail("familymam91@gmail.com", merchant = "مالك التطبيق", store = "الإدارة العامة للبيان")
                                         viewModel.login("familymam91@gmail.com", "مشرف النظام — مالك التطبيق")
                                         Toast.makeText(context, "تم اعتماد دخول مالك التطبيق (familymam91@gmail.com)", Toast.LENGTH_SHORT).show()
                                         isLoading = false
@@ -391,14 +462,14 @@ fun AdminLoginScreen(
                                 },
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .height(44.dp),
+                                    .height(48.dp),
                                 shape = RoundedCornerShape(12.dp),
                                 colors = ButtonDefaults.buttonColors(
                                     containerColor = Color(0xFF334155)
                                 )
                             ) {
                                 Row(
-                                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
                                     Icon(
@@ -408,7 +479,7 @@ fun AdminLoginScreen(
                                         modifier = Modifier.size(18.dp)
                                     )
                                     Text(
-                                        text = "دخول فوري كمالك التطبيق (familymam91@gmail.com)",
+                                        text = "الدخول كمالك النظام (familymam91)",
                                         fontSize = 13.sp,
                                         color = Color(0xFFE2E8F0)
                                     )

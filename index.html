@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>مركز تحميل تطبيقات البيان</title>
+    <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&display=swap" rel="stylesheet">
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: 'Cairo', sans-serif;
+        }
+        body {
+            background: linear-gradient(135deg, #0F172A 0%, #1E1B4B 100%);
+            color: #F8FAFC;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+        .container {
+            max-width: 580px;
+            width: 100%;
+            background: rgba(30, 41, 59, 0.7);
+            backdrop-filter: blur(16px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 24px;
+            padding: 32px 24px;
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+            text-align: center;
+        }
+        .logo-box {
+            width: 80px;
+            height: 80px;
+            background: linear-gradient(135deg, #6366F1, #8B5CF6);
+            border-radius: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0 auto 16px;
+            box-shadow: 0 10px 25px -5px rgba(99, 102, 241, 0.5);
+            font-size: 40px;
+        }
+        h1 {
+            font-size: 26px;
+            font-weight: 800;
+            margin-bottom: 6px;
+            color: #FFFFFF;
+        }
+        p.subtitle {
+            font-size: 14px;
+            color: #94A3B8;
+            margin-bottom: 28px;
+        }
+        .card-apk {
+            background: rgba(15, 23, 42, 0.6);
+            border: 1px solid rgba(99, 102, 241, 0.25);
+            border-radius: 18px;
+            padding: 20px;
+            margin-bottom: 16px;
+            text-align: right;
+            transition: all 0.3s ease;
+        }
+        .card-apk:hover {
+            border-color: #6366F1;
+            transform: translateY(-2px);
+        }
+        .card-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 10px;
+        }
+        .badge {
+            background: #6366F1;
+            color: #FFF;
+            font-size: 11px;
+            font-weight: 700;
+            padding: 4px 10px;
+            border-radius: 20px;
+        }
+        .badge-user {
+            background: #0284C7;
+        }
+        .apk-title {
+            font-size: 17px;
+            font-weight: 700;
+            color: #F8FAFC;
+        }
+        .apk-desc {
+            font-size: 12px;
+            color: #94A3B8;
+            margin-bottom: 14px;
+            line-height: 1.6;
+        }
+        .btn-download {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            width: 100%;
+            background: linear-gradient(135deg, #4F46E5, #7C3AED);
+            color: white;
+            text-decoration: none;
+            padding: 13px 20px;
+            border-radius: 14px;
+            font-weight: 700;
+            font-size: 15px;
+            transition: opacity 0.2s;
+            box-shadow: 0 4px 15px rgba(79, 70, 229, 0.4);
+        }
+        .btn-download:hover {
+            opacity: 0.9;
+        }
+        .btn-user {
+            background: linear-gradient(135deg, #0284C7, #2563EB);
+            box-shadow: 0 4px 15px rgba(2, 132, 199, 0.4);
+        }
+        .footer-note {
+            margin-top: 24px;
+            font-size: 12px;
+            color: #64748B;
+            line-height: 1.6;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="logo-box">⚖️</div>
+        <h1>تطبيق البيان</h1>
+        <p class="subtitle">مركز تحميل حزم أندرويد الرسمية (APK Direct Downloads)</p>
+
+        <!-- Admin App Card -->
+        <div class="card-apk" style="border-color: rgba(99, 102, 241, 0.5);">
+            <div class="card-header">
+                <span class="apk-title">⚡ تطبيق الإدارة والتحكم (Admin App - admin1)</span>
+                <span class="badge">أحدث نسخة</span>
+            </div>
+            <p class="apk-desc">لوحة تحكم المشرفين والإدارة: إدارة المشتركين، الرسائل والتعاميم الجماعية، التحكم بالخدمة، وإشعارات الاشتراكات.</p>
+            <a href="/admin1.apk" class="btn-download" download="admin1.apk" onclick="downloadFile('/admin1.apk', 'admin1.apk')">
+                <span>⬇️ تحميل تطبيق الإدارة (admin1.apk)</span>
+            </a>
+        </div>
+
+        <!-- User App Card -->
+        <div class="card-apk">
+            <div class="card-header">
+                <span class="apk-title">📱 تطبيق المستخدمين والتجار (User App - user1)</span>
+                <span class="badge badge-user">أحدث نسخة</span>
+            </div>
+            <p class="apk-desc">تطبيق دفتر الديون والحسابات والتقارير للتجار والعملاء مع ميزة استلام الرسائل الإدارية وحالة الحساب اللحظية.</p>
+            <a href="/user1.apk" class="btn-download btn-user" download="user1.apk" onclick="downloadFile('/user1.apk', 'user1.apk')">
+                <span>⬇️ تحميل تطبيق المستخدم (user1.apk)</span>
+            </a>
+        </div>
+
+        <!-- Tawthiq Backup Card -->
+        <div class="card-apk" style="opacity: 0.85;">
+            <div class="card-header">
+                <span class="apk-title">📦 حزمة تطبيق البيان العامة (tawthiq.apk)</span>
+                <span class="badge" style="background: #10B981;">APK مباشر</span>
+            </div>
+            <p class="apk-desc">النسخة القياسية الكاملة من تطبيق البيان.</p>
+            <a href="/tawthiq.apk" class="btn-download" style="background: linear-gradient(135deg, #059669, #10B981);" download="tawthiq.apk" onclick="downloadFile('/tawthiq.apk', 'tawthiq.apk')">
+                <span>⬇️ تحميل (tawthiq.apk)</span>
+            </a>
+        </div>
+
+        <p class="footer-note">
+            💡 ملاحظة: عند تنزيل الملف على هاتفك، اضغط على إشعار التحميل وافتح الملف لتثبيته مباشرة.<br>
+            حجم كل ملف حوالي 31 ميغابايت.
+        </p>
+    </div>
+
+    <script>
+    function downloadFile(url, filename) {
+        try {
+            fetch(url)
+                .then(res => res.blob())
+                .then(blob => {
+                    const blobUrl = window.URL.createObjectURL(blob);
+                    const link = document.createElement('a');
+                    link.href = blobUrl;
+                    link.download = filename;
+                    document.body.appendChild(link);
+                    link.click();
+                    document.body.removeChild(link);
+                    window.URL.revokeObjectURL(blobUrl);
+                })
+                .catch(() => {
+                    window.open(url, '_blank');
+                });
+        } catch (e) {
+            window.open(url, '_blank');
+        }
+    }
+    </script>
+</body>
+</html>
