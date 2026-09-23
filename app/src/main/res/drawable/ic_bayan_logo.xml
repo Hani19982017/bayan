@@ -1,0 +1,175 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="300dp"
+    android:height="170dp"
+    android:viewportWidth="800"
+    android:viewportHeight="450">
+
+    <!-- ======================================================== -->
+    <!-- 1. LEFT: LETTER "ن" (NOON) WITH CYAN/AZURE GRADIENT     -->
+    <!-- ======================================================== -->
+
+    <!-- Blue Head (Circle on top-left) -->
+    <path
+        android:pathData="M 245,80 C 230.64,80 219,91.64 219,106 C 219,120.36 230.64,132 245,132 C 259.36,132 271,120.36 271,106 C 271,91.64 259.36,80 245,80 Z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:angle="135"
+                android:startX="219"
+                android:startY="80"
+                android:endX="271"
+                android:endY="132"
+                android:type="linear">
+                <item android:offset="0.0" android:color="#38BDF8" />
+                <item android:offset="0.4" android:color="#0284C7" />
+                <item android:offset="1.0" android:color="#0369A1" />
+            </gradient>
+        </aapt:attr>
+    </path>
+
+    <!-- Noon Crescent Outer & Inner Flow -->
+    <path
+        android:pathData="M 245,140 C 205,140 165,160 140,195 C 110,235 110,290 145,335 C 180,380 245,390 300,365 C 335,350 365,315 375,275 C 377,268 368,264 362,268 C 335,288 295,305 255,300 C 205,295 168,262 165,225 C 162,188 190,165 235,165 C 250,165 265,170 275,178 C 280,182 288,176 284,170 C 274,152 260,140 245,140 Z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:angle="45"
+                android:startX="110"
+                android:startY="380"
+                android:endX="375"
+                android:endY="140"
+                android:type="linear">
+                <item android:offset="0.0" android:color="#013A5C" />
+                <item android:offset="0.35" android:color="#026AA2" />
+                <item android:offset="0.75" android:color="#0284C7" />
+                <item android:offset="1.0" android:color="#38BDF8" />
+            </gradient>
+        </aapt:attr>
+    </path>
+
+    <!-- Central Noon Dot -->
+    <path
+        android:pathData="M 245,215 C 232.85,215 223,224.85 223,237 C 223,249.15 232.85,259 245,259 C 257.15,259 267,249.15 267,237 C 267,224.85 257.15,215 245,215 Z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:angle="90"
+                android:startX="223"
+                android:startY="259"
+                android:endX="267"
+                android:endY="215"
+                android:type="linear">
+                <item android:offset="0.0" android:color="#013A5C" />
+                <item android:offset="1.0" android:color="#0284C7" />
+            </gradient>
+        </aapt:attr>
+    </path>
+
+
+    <!-- ======================================================== -->
+    <!-- 2. MIDDLE: TALL ALIF ("ا") & ACCENTS                    -->
+    <!-- ======================================================== -->
+
+    <!-- Tall Alif Stem -->
+    <path
+        android:pathData="M 365,102 C 365,96 372,92 378,96 L 396,108 C 400,111 403,116 402,122 L 390,265 C 388,285 405,298 428,300 C 455,302 485,292 510,274 L 512,295 C 478,318 435,326 398,320 C 365,315 352,290 354,258 L 365,102 Z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:angle="90"
+                android:startX="354"
+                android:startY="326"
+                android:endX="403"
+                android:endY="92"
+                android:type="linear">
+                <item android:offset="0.0" android:color="#005B82" />
+                <item android:offset="0.5" android:color="#0284C7" />
+                <item android:offset="1.0" android:color="#0099DD" />
+            </gradient>
+        </aapt:attr>
+    </path>
+
+    <!-- Slanted Fathah Accent (ـَ) -->
+    <path
+        android:pathData="M 412,202 L 492,150 C 496,147 500,150 498,154 L 490,160 C 488,162 418,208 414,208 C 410,208 408,204 412,202 Z"
+        android:fillColor="#0284C7" />
+
+    <!-- 3-Wave Tooth Shaddah Accent (ـّ) -->
+    <path
+        android:pathData="M 432,220 C 435,212 442,212 445,218 C 448,212 455,212 458,218 C 461,212 468,212 471,218 L 471,230 C 466,226 460,229 458,233 C 455,228 449,226 445,230 C 442,226 436,226 432,230 Z"
+        android:fillColor="#0284C7" />
+
+    <!-- Two Dots for Yaa ("ي") -->
+    <!-- Left Dot -->
+    <path
+        android:pathData="M 535,335 C 523.95,335 515,343.95 515,355 C 515,366.05 523.95,375 535,375 C 546.05,375 555,366.05 555,355 C 555,343.95 546.05,335 535,335 Z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:angle="90"
+                android:startX="515"
+                android:startY="375"
+                android:endX="555"
+                android:endY="335"
+                android:type="linear">
+                <item android:offset="0.0" android:color="#005B82" />
+                <item android:offset="1.0" android:color="#0284C7" />
+            </gradient>
+        </aapt:attr>
+    </path>
+
+    <!-- Right Dot -->
+    <path
+        android:pathData="M 615,335 C 603.95,335 595,343.95 595,355 C 595,366.05 603.95,375 615,375 C 626.05,375 635,366.05 635,355 C 635,343.95 626.05,335 615,335 Z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:angle="90"
+                android:startX="595"
+                android:startY="375"
+                android:endX="635"
+                android:endY="335"
+                android:type="linear">
+                <item android:offset="0.0" android:color="#005B82" />
+                <item android:offset="1.0" android:color="#0284C7" />
+            </gradient>
+        </aapt:attr>
+    </path>
+
+
+    <!-- ======================================================== -->
+    <!-- 3. RIGHT: LETTER "ب" (BAA) WITH WARM ORANGE GRADIENT    -->
+    <!-- ======================================================== -->
+
+    <!-- Orange Head (Circle on top-right) -->
+    <path
+        android:pathData="M 575,82 C 560.64,82 549,93.64 549,108 C 549,122.36 560.64,134 575,134 C 589.36,134 601,122.36 601,108 C 601,93.64 589.36,82 575,82 Z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:angle="135"
+                android:startX="549"
+                android:startY="82"
+                android:endX="601"
+                android:endY="134"
+                android:type="linear">
+                <item android:offset="0.0" android:color="#FDBA74" />
+                <item android:offset="0.4" android:color="#F97316" />
+                <item android:offset="1.0" android:color="#EA580C" />
+            </gradient>
+        </aapt:attr>
+    </path>
+
+    <!-- Orange Ribbon Sweep of "ب" -->
+    <path
+        android:pathData="M 575,142 C 550,142 522,165 514,198 C 504,235 530,265 565,265 C 588,265 608,248 616,225 C 620,214 626,217 624,227 C 615,268 578,305 528,310 C 495,313 470,302 452,288 L 464,268 C 480,280 500,288 524,286 C 560,282 588,252 590,215 C 582,220 570,225 555,225 C 528,225 504,202 508,174 C 512,148 538,124 575,124 C 586,124 597,128 604,135 C 610,140 614,134 610,128 C 600,118 586,112 575,112 Z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:angle="315"
+                android:startX="452"
+                android:startY="112"
+                android:endX="626"
+                android:endY="313"
+                android:type="linear">
+                <item android:offset="0.0" android:color="#FDBA74" />
+                <item android:offset="0.5" android:color="#F97316" />
+                <item android:offset="1.0" android:color="#EA580C" />
+            </gradient>
+        </aapt:attr>
+    </path>
+
+</vector>
