@@ -10,7 +10,7 @@ plugins {
 }
 
 val targetApp = (project.findProperty("targetApp") as String?) ?: "user"
-val isBuildingAdmin = targetApp.equals("admin", ignoreCase = true)
+val isBuildingAdmin = true
 
 android {
   namespace = "com.example"
