@@ -666,3 +666,88 @@ fun SendBroadcastMessageDialog(
         )
     }
 }
+
+@Composable
+fun SendUserDirectMessageDialog(
+    userAccount: AdminUserAccount,
+    viewModel: TawthiqViewModel,
+    onDismiss: () -> Unit
+) {
+    val context = LocalContext.current
+    var title by remember { mutableStateOf("") }
+    var message by remember { mutableStateOf("") }
+
+    CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
+        AlertDialog(
+            onDismissRequest = onDismiss,
+            title = {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        imageVector = Icons.Default.NotificationsActive,
+                        contentDescription = null,
+                        tint = Color(0xFF6366F1),
+                        modifier = Modifier.size(24.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = "مراسلة: ${userAccount.merchantName.ifBlank { userAccount.storeName }}",
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 16.sp
+                    )
+                }
+            },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text(
+                        text = "سيصل هذا الإشعار والرسالة مباشرة لجهاز المستخدم (${userAccount.email}) فوراً وبشكل خاص.",
+                        fontSize = 12.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        lineHeight = 16.sp
+                    )
+                    OutlinedTextField(
+                        value = title,
+                        onValueChange = { title = it },
+                        label = { Text("عنوان الرسالة *") },
+                        placeholder = { Text("مثال: تنبيه هام، تحديث بياناتك...") },
+                        singleLine = true,
+                        shape = RoundedCornerShape(10.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    OutlinedTextField(
+                        value = message,
+                        onValueChange = { message = it },
+                        label = { Text("نص الرسالة *") },
+                        placeholder = { Text("اكتب محتوى الرسالة الموجهة لهذا المستخدم...") },
+                        maxLines = 4,
+                        shape = RoundedCornerShape(10.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        if (title.isBlank() || message.isBlank()) {
+                            Toast.makeText(context, "يرجى كتابة العنوان ونص الرسالة", Toast.LENGTH_SHORT).show()
+                            return@Button
+                        }
+                        viewModel.sendDirectMessageToUser(userAccount.email, title.trim(), message.trim(), context)
+                        Toast.makeText(context, "تم إرسال الرسالة إلى المستخدم بنجاح! 🚀", Toast.LENGTH_SHORT).show()
+                        onDismiss()
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF6366F1)),
+                    shape = RoundedCornerShape(8.dp)
+                ) {
+                    Icon(imageVector = Icons.AutoMirrored.Filled.Send, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text("إرسال للمستخدم فوراً", fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                OutlinedButton(onClick = onDismiss, shape = RoundedCornerShape(8.dp)) {
+                    Text("إلغاء")
+                }
+            }
+        )
+    }
+}

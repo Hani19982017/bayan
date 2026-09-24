@@ -551,29 +551,56 @@ class TawthiqViewModel(application: Application) : AndroidViewModel(application)
      */
     fun updateUserStatus(userEmail: String, newStatus: String) {
         val clean = userEmail.trim().lowercase()
+        val cleanId = clean.replace(".", "_").replace("@", "_")
         val currentList = _adminUserAccounts.value
         val updated = currentList.map {
             if (it.email.equals(clean, ignoreCase = true)) it.copy(status = newStatus) else it
         }
         _adminUserAccounts.value = updated
         saveAdminUsersInternal(updated)
-
         prefs.edit().putString("account_status_$clean", newStatus).apply()
         if (clean.equals(_userEmail.value.trim().lowercase(), ignoreCase = true)) {
             _currentUserAccountStatus.value = newStatus
         }
 
-        // Direct real-time write to Firestore collections
+        // Direct real-time write to Firestore collections under both cleanId and clean email
         viewModelScope.launch(Dispatchers.IO) {
             try {
-                val cleanId = clean.replace(".", "_").replace("@", "_")
                 val db = FirebaseFirestore.getInstance()
                 val data = hashMapOf<String, Any>(
                     "status" to newStatus,
                     "updatedAt" to System.currentTimeMillis()
                 )
                 db.collection("system_admin_users").document(cleanId).set(data, SetOptions.merge())
+                db.collection("system_admin_users").document(clean).set(data, SetOptions.merge())
                 db.collection("user_profiles").document(cleanId).set(data, SetOptions.merge())
+                db.collection("user_profiles").document(clean).set(data, SetOptions.merge())
+
+                // Direct notification push to user
+                val statusTitle = when (newStatus) {
+                    "ACTIVE" -> "تم تفعيل حسابك بنجاح ✓"
+                    "SUSPENDED" -> "تنبيه: تم إيقاف حسابك مؤقتاً ⏸"
+                    "BANNED" -> "تنبيه: تم حظر هذا الحساب 🚫"
+                    else -> "تحديث حالة الحساب: $newStatus"
+                }
+                val statusMsg = when (newStatus) {
+                    "ACTIVE" -> "مرحباً بك، حسابك الآن نشط وتعمل كافة ميزاته بكفاءة."
+                    "SUSPENDED" -> "تم إيقاف الخدمة مؤقتاً من قِبل الإدارة، يرجى التواصل مع الدعم."
+                    "BANNED" -> "تم حظر الحساب لمخالفة الشروط أو انتهاء صلاحية الوصول."
+                    else -> "تم تعديل حالة حسابك إلى: $newStatus"
+                }
+                val msgDoc = hashMapOf<String, Any>(
+                    "id" to "status_${System.currentTimeMillis()}",
+                    "title" to statusTitle,
+                    "message" to statusMsg,
+                    "sender" to "إدارة تطبيق البيان",
+                    "targetEmail" to clean,
+                    "sentAt" to System.currentTimeMillis()
+                )
+                db.collection("user_notifications").document(cleanId)
+                    .collection("messages").document(msgDoc["id"] as String).set(msgDoc, SetOptions.merge())
+                db.collection("user_notifications").document(clean)
+                    .collection("messages").document(msgDoc["id"] as String).set(msgDoc, SetOptions.merge())
             } catch (e: Exception) {
                 e.printStackTrace()
             }
@@ -582,17 +609,21 @@ class TawthiqViewModel(application: Application) : AndroidViewModel(application)
 
     fun deleteAdminUser(userEmail: String) {
         val clean = userEmail.trim().lowercase()
+        val cleanId = clean.replace(".", "_").replace("@", "_")
         val currentList = _adminUserAccounts.value
         val updated = currentList.filterNot { it.email.equals(clean, ignoreCase = true) }
         _adminUserAccounts.value = updated
         saveAdminUsersInternal(updated)
-
-        try {
-            val cleanId = clean.replace(".", "_").replace("@", "_")
-            FirebaseFirestore.getInstance().collection("system_admin_users").document(cleanId).delete()
-            FirebaseFirestore.getInstance().collection("user_profiles").document(cleanId).delete()
-        } catch (e: Exception) {
-            e.printStackTrace()
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val db = FirebaseFirestore.getInstance()
+                db.collection("system_admin_users").document(cleanId).delete()
+                db.collection("system_admin_users").document(clean).delete()
+                db.collection("user_profiles").document(cleanId).delete()
+                db.collection("user_profiles").document(clean).delete()
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
         }
     }
 
@@ -601,6 +632,7 @@ class TawthiqViewModel(application: Application) : AndroidViewModel(application)
      */
     fun updateUserPassword(userEmail: String, newPassword: String) {
         val clean = userEmail.trim().lowercase()
+        val cleanId = clean.replace(".", "_").replace("@", "_")
         val currentList = _adminUserAccounts.value
         val updated = currentList.map {
             if (it.email.equals(clean, ignoreCase = true)) it.copy(password = newPassword.trim()) else it
@@ -608,17 +640,17 @@ class TawthiqViewModel(application: Application) : AndroidViewModel(application)
         _adminUserAccounts.value = updated
         saveAdminUsersInternal(updated)
         prefs.edit().putString("user_pwd_$clean", newPassword.trim()).apply()
-
         viewModelScope.launch(Dispatchers.IO) {
             try {
-                val cleanId = clean.replace(".", "_").replace("@", "_")
                 val db = FirebaseFirestore.getInstance()
                 val data = hashMapOf<String, Any>(
                     "password" to newPassword.trim(),
                     "updatedAt" to System.currentTimeMillis()
                 )
                 db.collection("system_admin_users").document(cleanId).set(data, SetOptions.merge())
+                db.collection("system_admin_users").document(clean).set(data, SetOptions.merge())
                 db.collection("user_profiles").document(cleanId).set(data, SetOptions.merge())
+                db.collection("user_profiles").document(clean).set(data, SetOptions.merge())
             } catch (e: Exception) {
                 e.printStackTrace()
             }
@@ -630,10 +662,10 @@ class TawthiqViewModel(application: Application) : AndroidViewModel(application)
      */
     fun updateUserSubscription(userEmail: String, newPlan: String, durationDays: Int) {
         val clean = userEmail.trim().lowercase()
+        val cleanId = clean.replace(".", "_").replace("@", "_")
         val now = System.currentTimeMillis()
         val expiryTime = now + durationDays.toLong() * 86400000L
         val isPro = newPlan != "مجاني"
-
         val currentList = _adminUserAccounts.value
         val updated = currentList.map {
             if (it.email.equals(clean, ignoreCase = true)) {
@@ -646,7 +678,6 @@ class TawthiqViewModel(application: Application) : AndroidViewModel(application)
         }
         _adminUserAccounts.value = updated
         saveAdminUsersInternal(updated)
-
         prefs.edit()
             .putBoolean("is_pro_$clean", isPro)
             .putString("plan_name_$clean", newPlan)
@@ -654,7 +685,6 @@ class TawthiqViewModel(application: Application) : AndroidViewModel(application)
             .putInt("trial_days_$clean", if (!isPro) durationDays else 0)
             .putInt("allowed_tx_$clean", if (isPro) 99999 else 50)
             .apply()
-
         if (clean.equals(_userEmail.value.trim().lowercase(), ignoreCase = true)) {
             _subscriptionInfo.value = SubscriptionInfo(
                 planName = newPlan,
@@ -666,10 +696,8 @@ class TawthiqViewModel(application: Application) : AndroidViewModel(application)
                 expiryDate = expiryTime
             )
         }
-
         viewModelScope.launch(Dispatchers.IO) {
             try {
-                val cleanId = clean.replace(".", "_").replace("@", "_")
                 val db = FirebaseFirestore.getInstance()
                 val data = hashMapOf<String, Any>(
                     "plan" to newPlan,
@@ -679,7 +707,172 @@ class TawthiqViewModel(application: Application) : AndroidViewModel(application)
                     "updatedAt" to System.currentTimeMillis()
                 )
                 db.collection("system_admin_users").document(cleanId).set(data, SetOptions.merge())
+                db.collection("system_admin_users").document(clean).set(data, SetOptions.merge())
                 db.collection("user_profiles").document(cleanId).set(data, SetOptions.merge())
+                db.collection("user_profiles").document(clean).set(data, SetOptions.merge())
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
+    }
+
+    /**
+     * Send direct private notification/message to a specific user
+     */
+    fun sendDirectMessageToUser(targetEmail: String, title: String, message: String, context: Context) {
+        val clean = targetEmail.trim().lowercase()
+        val cleanId = clean.replace(".", "_").replace("@", "_")
+        val msgId = "msg_${System.currentTimeMillis()}_${(1000..9999).random()}"
+        val newMsg = SystemBroadcastMessage(
+            id = msgId,
+            title = title.trim(),
+            message = message.trim(),
+            sender = "إدارة تطبيق البيان (رسالة خاصة)",
+            sentAt = System.currentTimeMillis()
+        )
+        val updated = listOf(newMsg) + _systemBroadcasts.value
+        _systemBroadcasts.value = updated
+        saveBroadcastMessagesInternal(updated)
+
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val db = FirebaseFirestore.getInstance()
+                val doc = hashMapOf<String, Any>(
+                    "id" to newMsg.id,
+                    "title" to newMsg.title,
+                    "message" to newMsg.message,
+                    "sender" to newMsg.sender,
+                    "targetEmail" to clean,
+                    "sentAt" to newMsg.sentAt
+                )
+                db.collection("system_broadcasts").document(newMsg.id).set(doc, SetOptions.merge())
+                db.collection("user_notifications").document(cleanId)
+                    .collection("messages").document(newMsg.id).set(doc, SetOptions.merge())
+                db.collection("user_notifications").document(clean)
+                    .collection("messages").document(newMsg.id).set(doc, SetOptions.merge())
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
+        TawthiqNotificationManager.sendAdminBroadcastNotification(
+            context = context,
+            title = title.trim(),
+            message = message.trim()
+        )
+    }
+
+    /**
+     * Automatic Complete Cloud Synchronization:
+     * Backs up and syncs ALL user accounts and their transactions to Firestore.
+     */
+    fun syncAllUserAccountsAndTransactionsToCloud() {
+        val email = _userEmail.value.trim().lowercase()
+        if (email.isBlank()) return
+        val cleanId = email.replace(".", "_").replace("@", "_")
+
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val db = FirebaseFirestore.getInstance()
+                val allAccounts = repository.getAllAccountsSnapshot()
+                var totalVolume = 0.0
+
+                for (acc in allAccounts) {
+                    val effectiveSyncKey = if (acc.syncKey.isNotBlank()) acc.syncKey else "tw_${cleanId}_acc_${acc.id}"
+                    if (acc.userEmail.isBlank() || acc.syncKey.isBlank()) {
+                        repository.updateAccount(acc.copy(userEmail = email, syncKey = effectiveSyncKey))
+                    }
+
+                    val txs = repository.getTransactionsSnapshotForAccount(acc.id)
+                    totalVolume += txs.sumOf { it.amount }
+
+                    // 1. live_statements
+                    val statementDoc = hashMapOf<String, Any>(
+                        "syncKey" to effectiveSyncKey,
+                        "accountName" to acc.name,
+                        "storeName" to _storeName.value,
+                        "merchantEmail" to email,
+                        "userEmail" to email,
+                        "phone" to acc.phone,
+                        "currency" to acc.currency,
+                        "transactionCount" to txs.size,
+                        "lastUpdated" to System.currentTimeMillis()
+                    )
+                    db.collection("live_statements").document(effectiveSyncKey).set(statementDoc, SetOptions.merge())
+
+                    for (tx in txs) {
+                        val txDocId = if (tx.id > 0) tx.id.toString() else "tx_${tx.date}_${Math.abs(tx.amount.hashCode())}"
+                        val txMap = hashMapOf<String, Any>(
+                            "id" to tx.id,
+                            "accountId" to acc.id,
+                            "syncKey" to effectiveSyncKey,
+                            "userEmail" to email,
+                            "merchantEmail" to email,
+                            "accountName" to acc.name,
+                            "storeName" to _storeName.value,
+                            "type" to tx.type,
+                            "amount" to tx.amount,
+                            "currency" to (if (tx.currency.isNotBlank()) tx.currency else acc.currency),
+                            "description" to tx.description,
+                            "date" to tx.date,
+                            "dueDate" to (tx.dueDate ?: 0L),
+                            "receiptNumber" to tx.receiptNumber,
+                            "isSettled" to tx.isSettled,
+                            "updatedAt" to System.currentTimeMillis()
+                        )
+                        db.collection("live_statements").document(effectiveSyncKey)
+                            .collection("transactions").document(txDocId).set(txMap, SetOptions.merge())
+                        db.collection("transactions").document("${cleanId}_${acc.id}_${txDocId}").set(txMap, SetOptions.merge())
+                    }
+
+                    // 2. user_merchant_ledgers
+                    val ledgerAcc = hashMapOf<String, Any>(
+                        "accountId" to acc.id,
+                        "accountName" to acc.name,
+                        "phone" to acc.phone,
+                        "currency" to acc.currency,
+                        "userEmail" to email,
+                        "syncKey" to effectiveSyncKey,
+                        "transactionCount" to txs.size,
+                        "updatedAt" to System.currentTimeMillis()
+                    )
+                    db.collection("user_merchant_ledgers").document(cleanId)
+                        .collection("accounts").document(acc.id.toString()).set(ledgerAcc, SetOptions.merge())
+                    db.collection("user_merchant_ledgers").document(email)
+                        .collection("accounts").document(acc.id.toString()).set(ledgerAcc, SetOptions.merge())
+
+                    for (tx in txs) {
+                        val txDocId = if (tx.id > 0) tx.id.toString() else "tx_${tx.date}"
+                        val txMap = hashMapOf<String, Any>(
+                            "id" to tx.id,
+                            "accountId" to acc.id,
+                            "userEmail" to email,
+                            "merchantEmail" to email,
+                            "accountName" to acc.name,
+                            "type" to tx.type,
+                            "amount" to tx.amount,
+                            "currency" to (if (tx.currency.isNotBlank()) tx.currency else acc.currency),
+                            "description" to tx.description,
+                            "date" to tx.date,
+                            "receiptNumber" to tx.receiptNumber,
+                            "isSettled" to tx.isSettled
+                        )
+                        db.collection("user_merchant_ledgers").document(cleanId)
+                            .collection("accounts").document(acc.id.toString())
+                            .collection("transactions").document(txDocId).set(txMap, SetOptions.merge())
+                        db.collection("user_merchant_ledgers").document(email)
+                            .collection("accounts").document(acc.id.toString())
+                            .collection("transactions").document(txDocId).set(txMap, SetOptions.merge())
+                    }
+                }
+
+                // Update summary on system_admin_users
+                val userSummary = hashMapOf<String, Any>(
+                    "totalAccountsCount" to allAccounts.size,
+                    "totalVolume" to totalVolume,
+                    "lastActive" to System.currentTimeMillis()
+                )
+                db.collection("system_admin_users").document(cleanId).set(userSummary, SetOptions.merge())
+                db.collection("system_admin_users").document(email).set(userSummary, SetOptions.merge())
             } catch (e: Exception) {
                 e.printStackTrace()
             }
@@ -688,8 +881,7 @@ class TawthiqViewModel(application: Application) : AndroidViewModel(application)
 
     /**
      * Requirement 3: View Customer Accounts and Ledger Transactions for any Merchant
-     * Synchronizes live from Firestore `live_statements`, subcollection `transactions`,
-     * root collection `transactions`, and local Room database.
+     * Synchronizes live from Firestore collections and local Room database.
      */
     fun getCustomersAndTransactionsForUser(
         userEmail: String,
@@ -698,19 +890,17 @@ class TawthiqViewModel(application: Application) : AndroidViewModel(application)
         viewModelScope.launch(Dispatchers.IO) {
             val cleanEmail = userEmail.trim().lowercase()
             val cleanEmailKey = cleanEmail.replace(".", "_").replace("@", "_")
-
-            // 1. FIRST: Query Local Room DB and return IMMEDIATELY on Main thread (< 10ms)
             val resultList = mutableListOf<Pair<AccountEntity, List<TransactionEntity>>>()
+
+            // 1. Check local Room DB first
             try {
                 val localAccounts = repository.getAccountsForUserSnapshot(cleanEmail)
                 val allAccounts = repository.getAllAccountsSnapshot()
-                val targetAccounts = when {
-                    localAccounts.isNotEmpty() -> localAccounts
-                    cleanEmail.equals(_userEmail.value.trim().lowercase(), ignoreCase = true) -> allAccounts
-                    else -> allAccounts.filter { 
-                        it.userEmail.equals(cleanEmail, ignoreCase = true) || cleanEmail.contains(it.userEmail) || it.userEmail.isBlank()
-                    }.ifEmpty { allAccounts }
-                }
+                val targetAccounts = (localAccounts + allAccounts.filter {
+                    it.userEmail.equals(cleanEmail, ignoreCase = true) ||
+                    cleanEmail.contains(it.userEmail) ||
+                    (it.userEmail.isBlank() && _userEmail.value.trim().lowercase() == cleanEmail)
+                }).distinctBy { it.id }
 
                 for (acc in targetAccounts) {
                     val txs = repository.getTransactionsSnapshotForAccount(acc.id)
@@ -720,130 +910,72 @@ class TawthiqViewModel(application: Application) : AndroidViewModel(application)
                 e.printStackTrace()
             }
 
-            // Immediately notify UI on Main thread so user NEVER sees a spinning dialog!
-            withContext(Dispatchers.Main) {
-                onResult(resultList.toList())
+            // If we found local accounts, deliver them immediately to UI so user sees them fast
+            if (resultList.isNotEmpty()) {
+                withContext(Dispatchers.Main) {
+                    onResult(resultList.toList())
+                }
             }
 
-            // 2. SECOND: Non-blocking fetch from Firestore live_statements and root transactions
+            // 2. Fetch all cloud accounts and transactions from Firestore
             try {
-                kotlinx.coroutines.withTimeoutOrNull(2500L) {
-                    val db = FirebaseFirestore.getInstance()
+                val db = FirebaseFirestore.getInstance()
 
-                    // live_statements
+                // Source A: user_merchant_ledgers
+                val ledgerDocIds = listOf(cleanEmailKey, cleanEmail)
+                for (docId in ledgerDocIds) {
                     try {
-                        val snapshot = db.collection("live_statements").get().awaitTask()
-                        for (doc in snapshot.documents) {
-                            val mEmail = doc.getString("merchantEmail")?.trim()?.lowercase()
-                                ?: doc.getString("userEmail")?.trim()?.lowercase() ?: ""
-                            val syncKey = doc.getString("syncKey") ?: doc.id
-
-                            val isMatch = (mEmail.isNotBlank() && (
-                                mEmail == cleanEmail || 
-                                cleanEmail.contains(mEmail) || 
-                                mEmail.contains(cleanEmail) ||
-                                syncKey.contains(cleanEmailKey)
-                            )) || syncKey.contains(cleanEmailKey)
-
-                            if (isMatch) {
-                                val accName = doc.getString("accountName") ?: "حساب عميل"
-                                val currency = doc.getString("currency") ?: "USD"
-                                val storeName = doc.getString("storeName") ?: ""
-                                val phone = doc.getString("phone") ?: ""
-                                val txList = mutableListOf<TransactionEntity>()
-
-                                try {
-                                    val subSnap = db.collection("live_statements").document(syncKey)
-                                        .collection("transactions").get().awaitTask()
-                                    for (txDoc in subSnap.documents) {
-                                        txList.add(
-                                            TransactionEntity(
-                                                id = txDoc.getLong("id") ?: Math.abs(txDoc.id.hashCode()).toLong(),
-                                                userEmail = cleanEmail,
-                                                accountId = Math.abs(syncKey.hashCode()).toLong(),
-                                                type = txDoc.getString("type") ?: "LANA",
-                                                amount = txDoc.getDouble("amount") ?: 0.0,
-                                                currency = txDoc.getString("currency") ?: currency,
-                                                description = txDoc.getString("description") ?: "",
-                                                date = txDoc.getLong("date") ?: System.currentTimeMillis(),
-                                                dueDate = txDoc.getLong("dueDate"),
-                                                receiptNumber = txDoc.getString("receiptNumber") ?: "",
-                                                isSettled = txDoc.getBoolean("isSettled") ?: false
-                                            )
-                                        )
-                                    }
-                                } catch (e: Exception) {
-                                    e.printStackTrace()
-                                }
-
-                                val virtualAccount = AccountEntity(
-                                    id = Math.abs(syncKey.hashCode()).toLong(),
-                                    userEmail = cleanEmail,
-                                    name = accName,
-                                    phone = phone,
-                                    category = "زبون",
-                                    currency = currency,
-                                    notes = "متجر: $storeName",
-                                    syncKey = syncKey
-                                )
-                                val idx = resultList.indexOfFirst { it.first.name.equals(accName, ignoreCase = true) }
-                                if (idx >= 0) {
-                                    val merged = (resultList[idx].second + txList).distinctBy { it.id }
-                                    resultList[idx] = Pair(resultList[idx].first, merged.sortedByDescending { it.date })
-                                } else {
-                                    resultList.add(Pair(virtualAccount, txList.sortedByDescending { it.date }))
-                                }
-                            }
-                        }
-                    } catch (e: Exception) {
-                        e.printStackTrace()
-                    }
-
-                    // Root transactions
-                    try {
-                        val rootSnap = db.collection("transactions").get().awaitTask()
-                        for (doc in rootSnap.documents) {
-                            val uEmail = doc.getString("userEmail")?.trim()?.lowercase() ?: ""
+                        val accSnap = db.collection("user_merchant_ledgers").document(docId)
+                            .collection("accounts").get().awaitTask()
+                        for (doc in accSnap.documents) {
+                            val accId = doc.getLong("accountId") ?: Math.abs(doc.id.hashCode()).toLong()
+                            val accName = doc.getString("accountName") ?: "زبون"
+                            val phone = doc.getString("phone") ?: ""
+                            val currency = doc.getString("currency") ?: "USD"
                             val syncKey = doc.getString("syncKey") ?: ""
-                            val isMatch = (uEmail.isNotBlank() && (uEmail == cleanEmail || uEmail.contains(cleanEmail) || cleanEmail.contains(uEmail))) ||
-                                          (syncKey.isNotBlank() && syncKey.contains(cleanEmailKey))
+                            val txList = mutableListOf<TransactionEntity>()
 
-                            if (isMatch) {
-                                val accName = doc.getString("accountName") ?: "عميل"
-                                val tx = TransactionEntity(
-                                    id = doc.getLong("id") ?: Math.abs(doc.id.hashCode()).toLong(),
-                                    userEmail = cleanEmail,
-                                    accountId = Math.abs(syncKey.hashCode()).toLong(),
-                                    type = doc.getString("type") ?: "LANA",
-                                    amount = doc.getDouble("amount") ?: 0.0,
-                                    currency = doc.getString("currency") ?: "USD",
-                                    description = doc.getString("description") ?: "",
-                                    date = doc.getLong("date") ?: System.currentTimeMillis(),
-                                    dueDate = doc.getLong("dueDate"),
-                                    receiptNumber = doc.getString("receiptNumber") ?: "",
-                                    isSettled = doc.getBoolean("isSettled") ?: false
-                                )
-
-                                val existingPair = resultList.find { it.first.name.equals(accName, ignoreCase = true) }
-                                if (existingPair != null) {
-                                    if (existingPair.second.none { it.id == tx.id || (it.date == tx.date && it.amount == tx.amount) }) {
-                                        val updatedList = (existingPair.second + tx).sortedByDescending { it.date }
-                                        val idx = resultList.indexOf(existingPair)
-                                        resultList[idx] = Pair(existingPair.first, updatedList)
-                                    }
-                                } else {
-                                    val newAcc = AccountEntity(
-                                        id = Math.abs(accName.hashCode()).toLong(),
-                                        userEmail = cleanEmail,
-                                        name = accName,
-                                        phone = "",
-                                        category = "زبون",
-                                        currency = tx.currency,
-                                        notes = "سجل سحابي",
-                                        syncKey = syncKey
+                            try {
+                                val txSnap = db.collection("user_merchant_ledgers").document(docId)
+                                    .collection("accounts").document(doc.id)
+                                    .collection("transactions").get().awaitTask()
+                                for (txDoc in txSnap.documents) {
+                                    txList.add(
+                                        TransactionEntity(
+                                            id = txDoc.getLong("id") ?: Math.abs(txDoc.id.hashCode()).toLong(),
+                                            userEmail = cleanEmail,
+                                            accountId = accId,
+                                            type = txDoc.getString("type") ?: "LANA",
+                                            amount = txDoc.getDouble("amount") ?: 0.0,
+                                            currency = txDoc.getString("currency") ?: currency,
+                                            description = txDoc.getString("description") ?: "",
+                                            date = txDoc.getLong("date") ?: System.currentTimeMillis(),
+                                            dueDate = txDoc.getLong("dueDate"),
+                                            receiptNumber = txDoc.getString("receiptNumber") ?: "",
+                                            isSettled = txDoc.getBoolean("isSettled") ?: false
+                                        )
                                     )
-                                    resultList.add(Pair(newAcc, listOf(tx)))
                                 }
+                            } catch (e: Exception) {
+                                e.printStackTrace()
+                            }
+
+                            val virtualAccount = AccountEntity(
+                                id = accId,
+                                userEmail = cleanEmail,
+                                name = accName,
+                                phone = phone,
+                                category = "زبون",
+                                currency = currency,
+                                notes = "سجل سحابي موثق",
+                                syncKey = syncKey
+                            )
+                            val existingIdx = resultList.indexOfFirst { it.first.name.equals(accName, ignoreCase = true) || it.first.id == accId }
+                            if (existingIdx >= 0) {
+                                val mergedTxs = (resultList[existingIdx].second + txList).distinctBy { it.id }
+                                resultList[existingIdx] = Pair(resultList[existingIdx].first, mergedTxs.sortedByDescending { it.date })
+                            } else {
+                                resultList.add(Pair(virtualAccount, txList.sortedByDescending { it.date }))
                             }
                         }
                     } catch (e: Exception) {
@@ -851,13 +983,134 @@ class TawthiqViewModel(application: Application) : AndroidViewModel(application)
                     }
                 }
 
-                // Deliver updated cloud merged results
+                // Source B: live_statements
+                try {
+                    val statementsSnap = db.collection("live_statements").get().awaitTask()
+                    for (doc in statementsSnap.documents) {
+                        val mEmail = doc.getString("merchantEmail")?.trim()?.lowercase()
+                            ?: doc.getString("userEmail")?.trim()?.lowercase() ?: ""
+                        val syncKey = doc.getString("syncKey") ?: doc.id
+                        val isMatch = (mEmail.isNotBlank() && (
+                            mEmail == cleanEmail ||
+                            cleanEmail.contains(mEmail) ||
+                            mEmail.contains(cleanEmail) ||
+                            syncKey.contains(cleanEmailKey)
+                        )) || syncKey.contains(cleanEmailKey) || syncKey.contains(cleanEmail)
+
+                        if (isMatch) {
+                            val accName = doc.getString("accountName") ?: "عميل"
+                            val currency = doc.getString("currency") ?: "USD"
+                            val storeName = doc.getString("storeName") ?: ""
+                            val phone = doc.getString("phone") ?: ""
+                            val txList = mutableListOf<TransactionEntity>()
+
+                            try {
+                                val subSnap = db.collection("live_statements").document(syncKey)
+                                    .collection("transactions").get().awaitTask()
+                                for (txDoc in subSnap.documents) {
+                                    txList.add(
+                                        TransactionEntity(
+                                            id = txDoc.getLong("id") ?: Math.abs(txDoc.id.hashCode()).toLong(),
+                                            userEmail = cleanEmail,
+                                            accountId = Math.abs(syncKey.hashCode()).toLong(),
+                                            type = txDoc.getString("type") ?: "LANA",
+                                            amount = txDoc.getDouble("amount") ?: 0.0,
+                                            currency = txDoc.getString("currency") ?: currency,
+                                            description = txDoc.getString("description") ?: "",
+                                            date = txDoc.getLong("date") ?: System.currentTimeMillis(),
+                                            dueDate = txDoc.getLong("dueDate"),
+                                            receiptNumber = txDoc.getString("receiptNumber") ?: "",
+                                            isSettled = txDoc.getBoolean("isSettled") ?: false
+                                        )
+                                    )
+                                }
+                            } catch (e: Exception) {
+                                e.printStackTrace()
+                            }
+
+                            val virtualAccount = AccountEntity(
+                                id = Math.abs(syncKey.hashCode()).toLong(),
+                                userEmail = cleanEmail,
+                                name = accName,
+                                phone = phone,
+                                category = "زبون",
+                                currency = currency,
+                                notes = "متجر: $storeName",
+                                syncKey = syncKey
+                            )
+                            val idx = resultList.indexOfFirst { it.first.name.equals(accName, ignoreCase = true) }
+                            if (idx >= 0) {
+                                val merged = (resultList[idx].second + txList).distinctBy { it.id }
+                                resultList[idx] = Pair(resultList[idx].first, merged.sortedByDescending { it.date })
+                            } else {
+                                resultList.add(Pair(virtualAccount, txList.sortedByDescending { it.date }))
+                            }
+                        }
+                    }
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                }
+
+                // Source C: root transactions collection
+                try {
+                    val rootSnap = db.collection("transactions").get().awaitTask()
+                    for (doc in rootSnap.documents) {
+                        val uEmail = doc.getString("userEmail")?.trim()?.lowercase()
+                            ?: doc.getString("merchantEmail")?.trim()?.lowercase() ?: ""
+                        val syncKey = doc.getString("syncKey") ?: ""
+                        val isMatch = (uEmail.isNotBlank() && (uEmail == cleanEmail || uEmail.contains(cleanEmail) || cleanEmail.contains(uEmail))) ||
+                                      (syncKey.isNotBlank() && (syncKey.contains(cleanEmailKey) || syncKey.contains(cleanEmail)))
+
+                        if (isMatch) {
+                            val accName = doc.getString("accountName") ?: "عميل"
+                            val tx = TransactionEntity(
+                                id = doc.getLong("id") ?: Math.abs(doc.id.hashCode()).toLong(),
+                                userEmail = cleanEmail,
+                                accountId = Math.abs(syncKey.hashCode()).toLong(),
+                                type = doc.getString("type") ?: "LANA",
+                                amount = doc.getDouble("amount") ?: 0.0,
+                                currency = doc.getString("currency") ?: "USD",
+                                description = doc.getString("description") ?: "",
+                                date = doc.getLong("date") ?: System.currentTimeMillis(),
+                                dueDate = doc.getLong("dueDate"),
+                                receiptNumber = doc.getString("receiptNumber") ?: "",
+                                isSettled = doc.getBoolean("isSettled") ?: false
+                            )
+                            val existingPair = resultList.find { it.first.name.equals(accName, ignoreCase = true) }
+                            if (existingPair != null) {
+                                if (existingPair.second.none { it.id == tx.id || (it.date == tx.date && it.amount == tx.amount) }) {
+                                    val updatedList = (existingPair.second + tx).sortedByDescending { it.date }
+                                    val idx = resultList.indexOf(existingPair)
+                                    resultList[idx] = Pair(existingPair.first, updatedList)
+                                }
+                            } else {
+                                val newAcc = AccountEntity(
+                                    id = Math.abs(accName.hashCode()).toLong(),
+                                    userEmail = cleanEmail,
+                                    name = accName,
+                                    phone = "",
+                                    category = "زبون",
+                                    currency = tx.currency,
+                                    notes = "سجل سحابي",
+                                    syncKey = syncKey
+                                )
+                                resultList.add(Pair(newAcc, listOf(tx)))
+                            }
+                        }
+                    }
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                }
+
+                // Final delivery on Main thread
                 withContext(Dispatchers.Main) {
                     onResult(resultList.toList())
                 }
             } catch (e: Exception) {
-                // Timeout or error: UI already has initial local results
                 e.printStackTrace()
+                withContext(Dispatchers.Main) {
+                    onResult(resultList.toList())
+                }
             }
         }
     }
@@ -1850,6 +2103,7 @@ class TawthiqViewModel(application: Application) : AndroidViewModel(application)
         } else {
             updateStoreProfile(derivedStore, derivedMerchant, derivedPhone, "USD")
         }
+        syncAllUserAccountsAndTransactionsToCloud()
     }
 
     fun loginAsStaff(
@@ -2043,6 +2297,7 @@ class TawthiqViewModel(application: Application) : AndroidViewModel(application)
         listenToSystemBroadcasts()
         listenToPaymentMethods()
         listenToUserAccountStatus(_userEmail.value)
+        syncAllUserAccountsAndTransactionsToCloud()
 
         // Automatically clean and deduplicate all transactions across accounts on startup
         viewModelScope.launch(Dispatchers.IO) {
@@ -2196,22 +2451,7 @@ class TawthiqViewModel(application: Application) : AndroidViewModel(application)
                 autoSendWhatsApp = autoSendWhatsApp
             )
             val generatedId = repository.addAccount(account, initialBalance, initialType)
-            try {
-                val db = FirebaseFirestore.getInstance()
-                val syncKey = "tw_" + java.util.UUID.randomUUID().toString().replace("-", "").take(16)
-                val statementDoc = hashMapOf<String, Any>(
-                    "syncKey" to syncKey,
-                    "accountName" to account.name,
-                    "storeName" to _storeName.value,
-                    "merchantEmail" to _userEmail.value,
-                    "phone" to account.phone,
-                    "currency" to effectiveCurrency,
-                    "lastUpdated" to System.currentTimeMillis()
-                )
-                db.collection("live_statements").document(syncKey).set(statementDoc, SetOptions.merge())
-            } catch (e: Exception) {
-                e.printStackTrace()
-            }
+            syncAllUserAccountsAndTransactionsToCloud()
         }
     }
 
@@ -2301,6 +2541,7 @@ class TawthiqViewModel(application: Application) : AndroidViewModel(application)
             } catch (e: Exception) {
                 e.printStackTrace()
             }
+            syncAllUserAccountsAndTransactionsToCloud()
         }
     }
 
@@ -2312,6 +2553,7 @@ class TawthiqViewModel(application: Application) : AndroidViewModel(application)
             if (targetAccount != null) {
                 com.example.util.FirebaseSyncManager.deleteTransaction(targetAccount, transactionId, receiptNumber, _userEmail.value)
             }
+            syncAllUserAccountsAndTransactionsToCloud()
         }
     }
 

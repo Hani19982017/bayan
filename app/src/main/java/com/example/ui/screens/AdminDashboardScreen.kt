@@ -108,6 +108,7 @@ import com.example.ui.components.ChangeUserPasswordDialog
 import com.example.ui.components.ManageUserSubscriptionDialog
 import com.example.ui.components.ReviewPaymentRequestDialog
 import com.example.ui.components.SendBroadcastMessageDialog
+import com.example.ui.components.SendUserDirectMessageDialog
 import com.example.ui.components.formatMoney
 import com.example.ui.theme.LahoGreen
 import com.example.ui.theme.LanaRed
@@ -150,6 +151,7 @@ fun AdminDashboardScreen(
     var selectedPaymentForEdit by remember { mutableStateOf<PaymentMethodConfig?>(null) }
     var showBroadcastDialog by remember { mutableStateOf(false) }
     var userToDelete by remember { mutableStateOf<AdminUserAccount?>(null) }
+    var userForDirectMessage by remember { mutableStateOf<AdminUserAccount?>(null) }
 
     LaunchedEffect(Unit) {
         viewModel.syncAdminDataFromCloud()
@@ -305,7 +307,8 @@ fun AdminDashboardScreen(
                             onPasswordClick = { selectedUserForPassword = it },
                             onSubscriptionClick = { selectedUserForSubscription = it },
                             onLedgerClick = { selectedUserForLedger = it },
-                            onDeleteClick = { userToDelete = it }
+                            onDeleteClick = { userToDelete = it },
+                            onSendMessageClick = { userForDirectMessage = it }
                         )
                         1 -> AdminPaymentRequestsTab(
                             requests = paymentRequests,
@@ -386,6 +389,14 @@ fun AdminDashboardScreen(
             )
         }
 
+        userForDirectMessage?.let { user ->
+            SendUserDirectMessageDialog(
+                userAccount = user,
+                viewModel = viewModel,
+                onDismiss = { userForDirectMessage = null }
+            )
+        }
+
         userToDelete?.let { user ->
             AlertDialog(
                 onDismissRequest = { userToDelete = null },
@@ -424,7 +435,8 @@ private fun AdminUsersTab(
     onPasswordClick: (AdminUserAccount) -> Unit,
     onSubscriptionClick: (AdminUserAccount) -> Unit,
     onLedgerClick: (AdminUserAccount) -> Unit,
-    onDeleteClick: (AdminUserAccount) -> Unit
+    onDeleteClick: (AdminUserAccount) -> Unit,
+    onSendMessageClick: (AdminUserAccount) -> Unit
 ) {
     val context = LocalContext.current
     var searchQuery by remember { mutableStateOf("") }
@@ -524,7 +536,8 @@ private fun AdminUsersTab(
                     onDelete = { onDeleteClick(user) },
                     onPasswordClick = { onPasswordClick(user) },
                     onSubscriptionClick = { onSubscriptionClick(user) },
-                    onLedgerClick = { onLedgerClick(user) }
+                    onLedgerClick = { onLedgerClick(user) },
+                    onSendMessageClick = { onSendMessageClick(user) }
                 )
             }
         }
@@ -540,7 +553,8 @@ private fun AdminUserCard(
     onDelete: () -> Unit,
     onPasswordClick: () -> Unit,
     onSubscriptionClick: () -> Unit,
-    onLedgerClick: () -> Unit
+    onLedgerClick: () -> Unit,
+    onSendMessageClick: () -> Unit
 ) {
     val sdf = SimpleDateFormat("yyyy/MM/dd", Locale.getDefault())
     val expiryFormatted = if (user.subscriptionExpiry > 0) sdf.format(Date(user.subscriptionExpiry)) else "غير محدد"
@@ -652,7 +666,7 @@ private fun AdminUserCard(
                 )
             }
 
-            // Quick Actions: Row 1 (Service control & Customer transactions)
+            // Quick Actions: Row 1 (Service control & Customer transactions & Direct Message)
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(6.dp)
@@ -661,23 +675,35 @@ private fun AdminUserCard(
                 OutlinedButton(
                     onClick = onLedgerClick,
                     shape = RoundedCornerShape(8.dp),
-                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+                    contentPadding = PaddingValues(horizontal = 6.dp, vertical = 6.dp),
                     modifier = Modifier.weight(1.3f)
                 ) {
                     Icon(Icons.Default.ReceiptLong, contentDescription = null, modifier = Modifier.size(15.dp))
-                    Spacer(modifier = Modifier.width(4.dp))
+                    Spacer(modifier = Modifier.width(3.dp))
                     Text("الزبائن والمعاملات", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                }
+
+                // Direct Message
+                OutlinedButton(
+                    onClick = onSendMessageClick,
+                    shape = RoundedCornerShape(8.dp),
+                    contentPadding = PaddingValues(horizontal = 6.dp, vertical = 6.dp),
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Icon(Icons.AutoMirrored.Filled.Send, contentDescription = null, tint = Color(0xFF6366F1), modifier = Modifier.size(14.dp))
+                    Spacer(modifier = Modifier.width(3.dp))
+                    Text("مراسلة", fontSize = 11.sp, color = Color(0xFF6366F1), fontWeight = FontWeight.Bold)
                 }
 
                 // Change Password
                 OutlinedButton(
                     onClick = onPasswordClick,
                     shape = RoundedCornerShape(8.dp),
-                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
-                    modifier = Modifier.weight(1.1f)
+                    contentPadding = PaddingValues(horizontal = 6.dp, vertical = 6.dp),
+                    modifier = Modifier.weight(1f)
                 ) {
-                    Icon(Icons.Default.Key, contentDescription = null, modifier = Modifier.size(15.dp))
-                    Spacer(modifier = Modifier.width(4.dp))
+                    Icon(Icons.Default.Key, contentDescription = null, modifier = Modifier.size(14.dp))
+                    Spacer(modifier = Modifier.width(3.dp))
                     Text("كلمة المرور", fontSize = 11.sp)
                 }
 
@@ -685,11 +711,11 @@ private fun AdminUserCard(
                 OutlinedButton(
                     onClick = onSubscriptionClick,
                     shape = RoundedCornerShape(8.dp),
-                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+                    contentPadding = PaddingValues(horizontal = 6.dp, vertical = 6.dp),
                     modifier = Modifier.weight(1f)
                 ) {
-                    Icon(Icons.Default.Diamond, contentDescription = null, modifier = Modifier.size(15.dp))
-                    Spacer(modifier = Modifier.width(4.dp))
+                    Icon(Icons.Default.Diamond, contentDescription = null, modifier = Modifier.size(14.dp))
+                    Spacer(modifier = Modifier.width(3.dp))
                     Text("الاشتراك", fontSize = 11.sp)
                 }
             }

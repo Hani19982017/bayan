@@ -19,18 +19,18 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.AccountCircle
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
-import androidx.compose.material.icons.filled.ReceiptLong
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.Divider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -38,20 +38,21 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.delay
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -62,6 +63,9 @@ import com.example.ui.theme.LahoGreen
 import com.example.ui.theme.LanaRed
 import com.example.ui.theme.TawthiqPrimary
 import com.example.ui.viewmodel.TawthiqViewModel
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import java.text.DecimalFormat
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -76,11 +80,13 @@ fun AdminCustomerLedgerDialog(
     var data by remember { mutableStateOf<List<Pair<AccountEntity, List<TransactionEntity>>>>(emptyList()) }
     var searchQuery by remember { mutableStateOf("") }
     var expandedAccountId by remember { mutableStateOf<Long?>(null) }
+    val scope = rememberCoroutineScope()
 
-    LaunchedEffect(userAccount.email) {
+    fun loadLedgerData() {
         isLoading = true
-        val timeoutJob = launch {
-            delay(2000L)
+        // Set a safety timeout so spinner never gets stuck
+        val timeoutJob = scope.launch {
+            delay(5000L)
             if (isLoading) isLoading = false
         }
         viewModel.getCustomersAndTransactionsForUser(userAccount.email) { result ->
@@ -88,6 +94,10 @@ fun AdminCustomerLedgerDialog(
             isLoading = false
             timeoutJob.cancel()
         }
+    }
+
+    LaunchedEffect(userAccount.email) {
+        loadLedgerData()
     }
 
     val filteredData = remember(data, searchQuery) {
@@ -103,7 +113,10 @@ fun AdminCustomerLedgerDialog(
             onDismissRequest = onDismiss,
             confirmButton = {},
             dismissButton = {
-                TextButton(onClick = onDismiss) {
+                TextButton(
+                    onClick = onDismiss,
+                    modifier = Modifier.testTag("admin_ledger_close_btn")
+                ) {
                     Text("إغلاق", fontWeight = FontWeight.Bold)
                 }
             },
@@ -113,20 +126,33 @@ fun AdminCustomerLedgerDialog(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Column {
+                    Column(modifier = Modifier.weight(1f)) {
                         Text(
                             text = "زبائن ومعاملات: ${userAccount.merchantName.ifBlank { userAccount.storeName }}",
                             fontWeight = FontWeight.Bold,
-                            fontSize = 16.sp
+                            fontSize = 15.sp,
+                            maxLines = 1
                         )
                         Text(
                             text = userAccount.email,
-                            fontSize = 12.sp,
+                            fontSize = 11.sp,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
-                    IconButton(onClick = onDismiss) {
-                        Icon(imageVector = Icons.Default.Close, contentDescription = "إغلاق")
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        IconButton(
+                            onClick = { loadLedgerData() },
+                            modifier = Modifier.testTag("admin_ledger_refresh_btn")
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Refresh,
+                                contentDescription = "تحديث من السحابة",
+                                tint = TawthiqPrimary
+                            )
+                        }
+                        IconButton(onClick = onDismiss) {
+                            Icon(imageVector = Icons.Default.Close, contentDescription = "إغلاق")
+                        }
                     }
                 }
             },
@@ -134,7 +160,7 @@ fun AdminCustomerLedgerDialog(
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(460.dp),
+                        .height(480.dp),
                     verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
                     OutlinedTextField(
@@ -144,7 +170,9 @@ fun AdminCustomerLedgerDialog(
                         leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
                         singleLine = true,
                         shape = RoundedCornerShape(10.dp),
-                        modifier = Modifier.fillMaxWidth()
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("admin_ledger_search_field")
                     )
 
                     if (isLoading) {
@@ -154,7 +182,17 @@ fun AdminCustomerLedgerDialog(
                                 .weight(1f),
                             contentAlignment = Alignment.Center
                         ) {
-                            CircularProgressIndicator(color = TawthiqPrimary)
+                            Column(
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.spacedBy(12.dp)
+                            ) {
+                                CircularProgressIndicator(color = TawthiqPrimary, modifier = Modifier.size(36.dp))
+                                Text(
+                                    text = "جاري جلب الزبائن والمعاملات من السحابة...",
+                                    fontSize = 12.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
                         }
                     } else if (filteredData.isEmpty()) {
                         Box(
@@ -163,11 +201,36 @@ fun AdminCustomerLedgerDialog(
                                 .weight(1f),
                             contentAlignment = Alignment.Center
                         ) {
-                            Text(
-                                text = "لا يوجد زبائن أو قيود مسجلة لهذا الحساب حالياً",
-                                fontSize = 13.sp,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
+                            Column(
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.spacedBy(10.dp),
+                                modifier = Modifier.padding(16.dp)
+                            ) {
+                                Text(
+                                    text = "لا توجد زبائن أو قيود سحابية مسجلة لهذا الحساب حالياً.",
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.Medium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    textAlign = TextAlign.Center
+                                )
+                                Text(
+                                    text = "💡 تنبيه: إذا كان المستخدم مسجلاً للتو على جهازه، تأكد من فتح التطبيق على جهازه لتبدأ المزامنة التلقائية الفورية لكافة المعاملات.",
+                                    fontSize = 11.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f),
+                                    textAlign = TextAlign.Center,
+                                    lineHeight = 16.sp
+                                )
+                                Button(
+                                    onClick = { loadLedgerData() },
+                                    colors = ButtonDefaults.buttonColors(containerColor = TawthiqPrimary),
+                                    shape = RoundedCornerShape(8.dp),
+                                    modifier = Modifier.testTag("admin_ledger_retry_btn")
+                                ) {
+                                    Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(16.dp))
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text("إعادة الفحص والتحديث السحابي", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                }
+                            }
                         }
                     } else {
                         LazyColumn(
@@ -175,8 +238,22 @@ fun AdminCustomerLedgerDialog(
                             verticalArrangement = Arrangement.spacedBy(8.dp),
                             contentPadding = PaddingValues(bottom = 8.dp)
                         ) {
+                            item {
+                                Text(
+                                    text = "إجمالي الزبائن: ${filteredData.size} | إجمالي المعاملات: ${filteredData.sumOf { it.second.size }}",
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = TawthiqPrimary,
+                                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
+                                )
+                            }
                             items(filteredData, key = { it.first.id }) { (account, transactions) ->
                                 val isExpanded = expandedAccountId == account.id
+                                val totalLana = transactions.filter { it.type == "LANA" }.sumOf { it.amount }
+                                val totalLaho = transactions.filter { it.type == "LAHO" }.sumOf { it.amount }
+                                val netBalance = totalLana - totalLaho
+                                val df = DecimalFormat("#,##0.00")
+
                                 Card(
                                     modifier = Modifier.fillMaxWidth(),
                                     shape = RoundedCornerShape(12.dp),
@@ -200,16 +277,16 @@ fun AdminCustomerLedgerDialog(
                                             ) {
                                                 Box(
                                                     modifier = Modifier
-                                                        .size(36.dp)
+                                                        .size(38.dp)
                                                         .clip(CircleShape)
-                                                        .background(TawthiqPrimary.copy(alpha = 0.1f)),
+                                                        .background(TawthiqPrimary.copy(alpha = 0.12f)),
                                                     contentAlignment = Alignment.Center
                                                 ) {
                                                     Icon(
                                                         imageVector = Icons.Default.AccountCircle,
                                                         contentDescription = null,
                                                         tint = TawthiqPrimary,
-                                                        modifier = Modifier.size(22.dp)
+                                                        modifier = Modifier.size(24.dp)
                                                     )
                                                 }
                                                 Spacer(modifier = Modifier.width(10.dp))
@@ -226,7 +303,20 @@ fun AdminCustomerLedgerDialog(
                                                     )
                                                 }
                                             }
-
+                                            Column(horizontalAlignment = Alignment.End) {
+                                                Text(
+                                                    text = "${df.format(netBalance)} ${account.currency}",
+                                                    fontWeight = FontWeight.Bold,
+                                                    fontSize = 13.sp,
+                                                    color = if (netBalance >= 0) LanaRed else LahoGreen
+                                                )
+                                                Text(
+                                                    text = if (netBalance >= 0) "لنا (مطلوب)" else "له (دائن)",
+                                                    fontSize = 10.sp,
+                                                    color = if (netBalance >= 0) LanaRed else LahoGreen
+                                                )
+                                            }
+                                            Spacer(modifier = Modifier.width(4.dp))
                                             Icon(
                                                 imageVector = if (isExpanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
                                                 contentDescription = null,
@@ -245,7 +335,7 @@ fun AdminCustomerLedgerDialog(
                                             ) {
                                                 if (transactions.isEmpty()) {
                                                     Text(
-                                                        text = "لا توجد معاملات مسجلة في كشف حساب هذا الزبون.",
+                                                        text = "لا توجد حركات مسجلة داخل هذا الحساب.",
                                                         fontSize = 11.sp,
                                                         color = MaterialTheme.colorScheme.onSurfaceVariant
                                                     )
@@ -270,15 +360,14 @@ fun AdminCustomerLedgerDialog(
                                                                     fontSize = 12.sp
                                                                 )
                                                                 Text(
-                                                                    text = sdf.format(Date(tx.date)),
+                                                                    text = "${sdf.format(Date(tx.date))} • ${if (tx.receiptNumber.isNotBlank()) "سند: " + tx.receiptNumber else ""}",
                                                                     fontSize = 10.sp,
                                                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                                                 )
                                                             }
-
                                                             val isLana = tx.type == "LANA"
                                                             Text(
-                                                                text = "${if (isLana) "+" else "-"}${formatMoney(tx.amount)} ${tx.currency}",
+                                                                text = "${if (isLana) "+" else "-"}${df.format(tx.amount)} ${tx.currency}",
                                                                 color = if (isLana) LanaRed else LahoGreen,
                                                                 fontWeight = FontWeight.Bold,
                                                                 fontSize = 13.sp
