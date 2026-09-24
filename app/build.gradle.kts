@@ -9,24 +9,35 @@ plugins {
   alias(libs.plugins.google.services)
 }
 
-val targetApp = (project.findProperty("targetApp") as String?) ?: System.getenv("TARGET_APP") ?: "user"
-val isBuildingAdmin = (targetApp == "admin")
-
 android {
   namespace = "com.example"
   compileSdk { version = release(36) { minorApiLevel = 1 } }
 
   defaultConfig {
-    applicationId = if (isBuildingAdmin) "com.aistudio.tawthiq.admin" else "com.aistudio.tawthiq.kfyrt"
     minSdk = 24
     targetSdk = 36
     versionCode = 5
-    versionName = if (isBuildingAdmin) "1.0-admin" else "2.0"
-
-    manifestPlaceholders["appLabel"] = if (isBuildingAdmin) "@string/admin_app_name" else "@string/app_name"
-    buildConfigField("Boolean", "IS_ADMIN_APP", isBuildingAdmin.toString())
+    versionName = "2.0"
 
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+  }
+
+  flavorDimensions += "mode"
+  productFlavors {
+    create("user") {
+      dimension = "mode"
+      applicationId = "com.aistudio.tawthiq.kfyrt"
+      versionName = "2.0"
+      manifestPlaceholders["appLabel"] = "@string/app_name"
+      buildConfigField("Boolean", "IS_ADMIN_APP", "false")
+    }
+    create("admin") {
+      dimension = "mode"
+      applicationId = "com.aistudio.tawthiq.admin"
+      versionName = "1.0-admin"
+      manifestPlaceholders["appLabel"] = "@string/admin_app_name"
+      buildConfigField("Boolean", "IS_ADMIN_APP", "true")
+    }
   }
 
   signingConfigs {
