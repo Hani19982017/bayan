@@ -22,6 +22,21 @@ object FirebaseSyncManager {
 
     private val activeListeners = ConcurrentHashMap<String, ListenerRegistration>()
     private val activeParentListeners = ConcurrentHashMap<String, ListenerRegistration>()
+    @Volatile
+    var appContext: Context? = null
+
+    fun initContext(context: Context) {
+        appContext = context.applicationContext
+    }
+
+    private fun handleError(e: Throwable, action: String, context: Context? = null) {
+        val targetCtx = context ?: appContext
+        if (targetCtx != null) {
+            FirestoreErrorHandler.handleAndToast(targetCtx, e, action)
+        } else {
+            Log.e(TAG, "Firestore error during $action: ${FirestoreErrorHandler.getErrorMessage(e, action)}", e)
+        }
+    }
 
     /**
      * Generates a stable unique sync key for an account.
@@ -104,7 +119,7 @@ object FirebaseSyncManager {
 
             Log.d(TAG, "Transaction pushed to Firestore live successfully: $txDocId (syncKey: $syncKey)")
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to push transaction to Firestore", e)
+            handleError(e, "مزامنة العملية مع السحابة")
         }
     }
 
@@ -132,11 +147,14 @@ object FirebaseSyncManager {
                         db.collection(COLLECTION_TRANSACTIONS).document("${syncKey}_${doc.id}").delete()
                     }
                 }
+                .addOnFailureListener { e ->
+                    handleError(e, "حذف عمليات الحساب من السحابة")
+                }
 
             stopLiveSyncForAccount(account)
             Log.d(TAG, "Account marked as deleted in Firestore: $syncKey (${account.name})")
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to delete account in Firestore", e)
+            handleError(e, "حذف الحساب من السحابة")
         }
     }
 
@@ -158,7 +176,7 @@ object FirebaseSyncManager {
                 db.collection(COLLECTION_TRANSACTIONS).document("${syncKey}_$receiptNumber").delete()
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to delete transaction from Firestore", e)
+            handleError(e, "حذف العملية من السحابة")
         }
     }
 

@@ -25,6 +25,7 @@ class TawthiqApplication : Application() {
         try {
             // 0. Ensure Firebase is initialized and configure App Check
             FirebaseApp.initializeApp(this)
+            FirebaseSyncManager.initContext(this)
             try {
                 if (BuildConfig.DEBUG) {
                     val firebaseAppCheck = FirebaseAppCheck.getInstance()

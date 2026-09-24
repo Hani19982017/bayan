@@ -188,6 +188,19 @@ class TawthiqViewModel(application: Application) : AndroidViewModel(application)
     ))
     val supportTickets: StateFlow<List<SupportTicket>> = _supportTickets.asStateFlow()
 
+    // Centralized Firestore Error message state (Quota RESOURCE_EXHAUSTED & General)
+    private val _firestoreErrorMessage = MutableStateFlow<String?>(null)
+    val firestoreErrorMessage: StateFlow<String?> = _firestoreErrorMessage.asStateFlow()
+
+    fun clearFirestoreErrorMessage() {
+        _firestoreErrorMessage.value = null
+    }
+
+    fun notifyFirestoreError(e: Throwable, actionContext: String = "") {
+        val msg = com.example.util.FirestoreErrorHandler.handleAndToast(getApplication(), e, actionContext)
+        _firestoreErrorMessage.value = msg
+    }
+
     private fun getSavedStoreName(email: String): String {
         return prefs.getString("store_name_$email", prefs.getString("store_name", "متجري") ?: "متجري") ?: "متجري"
     }
@@ -401,7 +414,7 @@ class TawthiqViewModel(application: Application) : AndroidViewModel(application)
 
                 mergeAndPublishAdminUsers()
             } catch (e: Exception) {
-                e.printStackTrace()
+                notifyFirestoreError(e, "إضافة موظف")
             }
         }
     }
@@ -443,7 +456,7 @@ class TawthiqViewModel(application: Application) : AndroidViewModel(application)
                 db.collection("store_staff").document("staff_${cleanMerchant}_${user.id}").set(staffDoc, SetOptions.merge())
                 db.collection("store_staff").document(cleanName).set(staffDoc, SetOptions.merge())
             } catch (e: Exception) {
-                e.printStackTrace()
+                notifyFirestoreError(e, "تحديث بيانات الموظف")
             }
         }
     }
@@ -460,7 +473,7 @@ class TawthiqViewModel(application: Application) : AndroidViewModel(application)
                 val cleanMerchant = email.trim().lowercase().replace(".", "_").replace("@", "_")
                 db.collection("store_staff").document("staff_${cleanMerchant}_${userId}").delete()
             } catch (e: Exception) {
-                e.printStackTrace()
+                notifyFirestoreError(e, "حذف الموظف")
             }
         }
     }
@@ -639,7 +652,7 @@ class TawthiqViewModel(application: Application) : AndroidViewModel(application)
                 db.collection("user_notifications").document(cleanUser)
                     .collection("messages").document(msgDoc["id"] as String).set(msgDoc, SetOptions.merge())
             } catch (e: Exception) {
-                e.printStackTrace()
+                notifyFirestoreError(e, "تحديث حالة الحساب")
             }
         }
     }
@@ -753,13 +766,16 @@ class TawthiqViewModel(application: Application) : AndroidViewModel(application)
             } catch (e: Exception) {
                 withContext(Dispatchers.Main) {
                     val msg = when {
+                        com.example.util.FirestoreErrorHandler.isQuotaExhausted(e) ->
+                            com.example.util.FirestoreErrorHandler.QUOTA_EXHAUSTED_MESSAGE
                         e is IllegalArgumentException || e.message?.contains("duplicate", true) == true -> 
                             com.example.util.MerchantAuthService.ERR_DUPLICATE_EMAIL
                         e is IllegalStateException -> 
                             com.example.util.MerchantAuthService.ERR_DELETED_ACCOUNT
                         else -> 
-                            e.localizedMessage ?: "حدث خطأ أثناء إضافة الحساب"
+                            com.example.util.FirestoreErrorHandler.getErrorMessage(e, "إضافة حساب جديد")
                     }
+                    notifyFirestoreError(e, "إضافة مستخدم")
                     onResult(false, msg)
                 }
             }
@@ -783,7 +799,7 @@ class TawthiqViewModel(application: Application) : AndroidViewModel(application)
                 db.collection("user_profiles").document(cleanId).delete()
                 db.collection("user_profiles").document(clean).delete()
             } catch (e: Exception) {
-                e.printStackTrace()
+                notifyFirestoreError(e, "حذف حساب المستخدم")
             }
         }
     }
@@ -813,7 +829,7 @@ class TawthiqViewModel(application: Application) : AndroidViewModel(application)
                 db.collection("user_profiles").document(cleanId).set(data, SetOptions.merge())
                 db.collection("user_profiles").document(clean).set(data, SetOptions.merge())
             } catch (e: Exception) {
-                e.printStackTrace()
+                notifyFirestoreError(e, "تغيير كلمة المرور")
             }
         }
     }
@@ -872,7 +888,7 @@ class TawthiqViewModel(application: Application) : AndroidViewModel(application)
                 db.collection("user_profiles").document(cleanId).set(data, SetOptions.merge())
                 db.collection("user_profiles").document(clean).set(data, SetOptions.merge())
             } catch (e: Exception) {
-                e.printStackTrace()
+                notifyFirestoreError(e, "تحديث الباقة والاشتراك")
             }
         }
     }
@@ -921,7 +937,7 @@ class TawthiqViewModel(application: Application) : AndroidViewModel(application)
                 db.collection("user_direct_messages").document(cleanId)
                     .collection("inbox").document(newMsg.id).set(doc, SetOptions.merge())
             } catch (e: Exception) {
-                e.printStackTrace()
+                notifyFirestoreError(e, "إرسال إشعار للمستخدم")
             }
         }
         TawthiqNotificationManager.sendAdminBroadcastNotification(
@@ -1044,7 +1060,7 @@ class TawthiqViewModel(application: Application) : AndroidViewModel(application)
                 db.collection("system_admin_users").document(cleanId).set(userSummary, SetOptions.merge())
                 db.collection("system_admin_users").document(email).set(userSummary, SetOptions.merge())
             } catch (e: Exception) {
-                e.printStackTrace()
+                notifyFirestoreError(e, "المزامنة السحابية للبيانات")
             }
         }
     }
@@ -1738,7 +1754,7 @@ class TawthiqViewModel(application: Application) : AndroidViewModel(application)
         try {
             FirebaseFirestore.getInstance().collection("system_payment_methods").document(id).delete()
         } catch (e: Exception) {
-            e.printStackTrace()
+            notifyFirestoreError(e, "حذف وسيلة الدفع")
         }
     }
 
@@ -1836,7 +1852,7 @@ class TawthiqViewModel(application: Application) : AndroidViewModel(application)
                 db.collection("subscription_requests").document(item.id).set(doc, SetOptions.merge())
             }
         } catch (e: Exception) {
-            e.printStackTrace()
+            notifyFirestoreError(e, "حفظ طلبات الدفع")
         }
     }
 
@@ -1992,7 +2008,7 @@ class TawthiqViewModel(application: Application) : AndroidViewModel(application)
                 )
                 db.collection("system_broadcasts").document(newMsg.id).set(doc, SetOptions.merge())
             } catch (e: Exception) {
-                e.printStackTrace()
+                notifyFirestoreError(e, "إرسال الإشعار العام")
             }
         }
 
@@ -2014,7 +2030,7 @@ class TawthiqViewModel(application: Application) : AndroidViewModel(application)
                 db.collection("system_broadcasts").document(messageId).delete()
                 db.collection("user_direct_messages").document(messageId).delete()
             } catch (e: Exception) {
-                e.printStackTrace()
+                notifyFirestoreError(e, "حذف الإشعار العام")
             }
         }
     }

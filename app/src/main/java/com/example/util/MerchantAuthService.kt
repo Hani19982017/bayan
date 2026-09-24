@@ -211,11 +211,13 @@ object MerchantAuthService {
             AuthResult.Error(e.message ?: ERR_DELETED_ACCOUNT)
         } catch (e: Exception) {
             val msg = e.message ?: ""
-            if (msg.contains("duplicate", ignoreCase = true) || msg.contains(ERR_DUPLICATE_EMAIL)) {
+            if (FirestoreErrorHandler.isQuotaExhausted(e)) {
+                AuthResult.Error(FirestoreErrorHandler.QUOTA_EXHAUSTED_MESSAGE)
+            } else if (msg.contains("duplicate", ignoreCase = true) || msg.contains(ERR_DUPLICATE_EMAIL)) {
                 AuthResult.Error(ERR_DUPLICATE_EMAIL)
             } else {
                 Log.e(TAG, "Transaction error: ${e.message}", e)
-                AuthResult.Error(e.localizedMessage ?: "حدث خطأ أثناء إنشاء الحساب، يرجى المحاولة ثانية.")
+                AuthResult.Error(FirestoreErrorHandler.getErrorMessage(e, "تسجيل التاجر"))
             }
         }
     }
