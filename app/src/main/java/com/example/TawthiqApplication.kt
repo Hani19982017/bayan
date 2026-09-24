@@ -3,10 +3,14 @@ package com.example
 import android.app.Application
 import android.content.Context
 import android.util.Log
+import com.example.BuildConfig
 import com.example.data.local.AppDatabase
 import com.example.util.FirebaseSyncManager
 import com.example.util.TawthiqBackgroundSyncManager
 import com.example.util.TawthiqNotificationManager
+import com.google.firebase.FirebaseApp
+import com.google.firebase.appcheck.FirebaseAppCheck
+import com.google.firebase.appcheck.debug.DebugAppCheckProviderFactory
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -19,6 +23,20 @@ class TawthiqApplication : Application() {
     override fun onCreate() {
         super.onCreate()
         try {
+            // 0. Ensure Firebase is initialized and configure App Check
+            FirebaseApp.initializeApp(this)
+            try {
+                if (BuildConfig.DEBUG) {
+                    val firebaseAppCheck = FirebaseAppCheck.getInstance()
+                    firebaseAppCheck.installAppCheckProviderFactory(
+                        DebugAppCheckProviderFactory.getInstance()
+                    )
+                    Log.d("TawthiqApplication", "Firebase App Check initialized with DebugAppCheckProviderFactory")
+                }
+            } catch (e: Exception) {
+                Log.w("TawthiqApplication", "AppCheck setup skipped: ${e.message}")
+            }
+
             // 1. Setup system notification channels
             TawthiqNotificationManager.createNotificationChannels(this)
 
