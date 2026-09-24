@@ -43,6 +43,7 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.Dispatchers
 import com.google.android.gms.tasks.Tasks
 import com.example.util.ExcelExportHelper
@@ -679,121 +680,126 @@ class TawthiqViewModel(application: Application) : AndroidViewModel(application)
             val result = mutableListOf<Pair<AccountEntity, List<TransactionEntity>>>()
             val cleanEmail = userEmail.trim().lowercase()
             val cleanEmailKey = cleanEmail.replace(".", "_").replace("@", "_")
-            val db = FirebaseFirestore.getInstance()
 
-            // 1. Query Firestore `live_statements` for this merchant
             try {
-                val statementsTask = db.collection("live_statements").get()
-                val snapshot = Tasks.await(statementsTask)
+                withTimeout(4500L) {
+                    val db = FirebaseFirestore.getInstance()
 
-                for (doc in snapshot.documents) {
-                    val mEmail = doc.getString("merchantEmail")?.trim()?.lowercase()
-                        ?: doc.getString("userEmail")?.trim()?.lowercase() ?: ""
-                    val syncKey = doc.getString("syncKey") ?: doc.id
+                    // 1. Query Firestore `live_statements` for this merchant
+                    try {
+                        val snapshot = Tasks.await(db.collection("live_statements").get())
+                        for (doc in snapshot.documents) {
+                            val mEmail = doc.getString("merchantEmail")?.trim()?.lowercase()
+                                ?: doc.getString("userEmail")?.trim()?.lowercase() ?: ""
+                            val syncKey = doc.getString("syncKey") ?: doc.id
 
-                    val isMatch = mEmail.isNotBlank() && (
-                        mEmail == cleanEmail || 
-                        cleanEmail.contains(mEmail) || 
-                        mEmail.contains(cleanEmail) ||
-                        syncKey.contains(cleanEmailKey)
-                    )
-
-                    if (isMatch) {
-                        val accName = doc.getString("accountName") ?: "حساب عميل"
-                        val currency = doc.getString("currency") ?: "USD"
-                        val storeName = doc.getString("storeName") ?: ""
-                        val phone = doc.getString("phone") ?: ""
-
-                        val txList = mutableListOf<TransactionEntity>()
-                        try {
-                            val subTask = db.collection("live_statements").document(syncKey)
-                                .collection("transactions").get()
-                            val subSnap = Tasks.await(subTask)
-                            for (txDoc in subSnap.documents) {
-                                txList.add(
-                                    TransactionEntity(
-                                        id = txDoc.getLong("id") ?: Math.abs(txDoc.id.hashCode()).toLong(),
-                                        userEmail = cleanEmail,
-                                        accountId = Math.abs(syncKey.hashCode()).toLong(),
-                                        type = txDoc.getString("type") ?: "LANA",
-                                        amount = txDoc.getDouble("amount") ?: 0.0,
-                                        currency = txDoc.getString("currency") ?: currency,
-                                        description = txDoc.getString("description") ?: "",
-                                        date = txDoc.getLong("date") ?: System.currentTimeMillis(),
-                                        dueDate = txDoc.getLong("dueDate"),
-                                        receiptNumber = txDoc.getString("receiptNumber") ?: "",
-                                        isSettled = txDoc.getBoolean("isSettled") ?: false
-                                    )
-                                )
-                            }
-                        } catch (e: Exception) {
-                            e.printStackTrace()
-                        }
-
-                        val virtualAccount = AccountEntity(
-                            id = Math.abs(syncKey.hashCode()).toLong(),
-                            userEmail = cleanEmail,
-                            name = accName,
-                            phone = phone,
-                            category = "زبون",
-                            currency = currency,
-                            notes = "متجر: $storeName",
-                            syncKey = syncKey
-                        )
-                        result.add(Pair(virtualAccount, txList.sortedByDescending { it.date }))
-                    }
-                }
-            } catch (e: Exception) {
-                e.printStackTrace()
-            }
-
-            // 2. Query Firestore root `transactions` for transactions of this merchant
-            try {
-                val rootTxTask = db.collection("transactions").get()
-                val rootSnap = Tasks.await(rootTxTask)
-
-                for (doc in rootSnap.documents) {
-                    val uEmail = doc.getString("userEmail")?.trim()?.lowercase() ?: ""
-                    if (uEmail == cleanEmail || uEmail.contains(cleanEmail)) {
-                        val accName = doc.getString("accountName") ?: "عميل"
-                        val syncKey = doc.getString("syncKey") ?: ""
-                        val tx = TransactionEntity(
-                            id = doc.getLong("id") ?: Math.abs(doc.id.hashCode()).toLong(),
-                            userEmail = cleanEmail,
-                            accountId = Math.abs(syncKey.hashCode()).toLong(),
-                            type = doc.getString("type") ?: "LANA",
-                            amount = doc.getDouble("amount") ?: 0.0,
-                            currency = doc.getString("currency") ?: "USD",
-                            description = doc.getString("description") ?: "",
-                            date = doc.getLong("date") ?: System.currentTimeMillis(),
-                            dueDate = doc.getLong("dueDate"),
-                            receiptNumber = doc.getString("receiptNumber") ?: "",
-                            isSettled = doc.getBoolean("isSettled") ?: false
-                        )
-
-                        val existingPair = result.find { it.first.name.equals(accName, ignoreCase = true) }
-                        if (existingPair != null) {
-                            if (existingPair.second.none { it.id == tx.id || (it.date == tx.date && it.amount == tx.amount) }) {
-                                val updatedList = existingPair.second + tx
-                                val idx = result.indexOf(existingPair)
-                                result[idx] = Pair(existingPair.first, updatedList.sortedByDescending { it.date })
-                            }
-                        } else {
-                            val newAcc = AccountEntity(
-                                id = Math.abs(accName.hashCode()).toLong(),
-                                userEmail = cleanEmail,
-                                name = accName,
-                                phone = "",
-                                category = "زبون",
-                                currency = tx.currency,
-                                notes = "سجل سحابي",
-                                syncKey = syncKey
+                            val isMatch = mEmail.isNotBlank() && (
+                                mEmail == cleanEmail || 
+                                cleanEmail.contains(mEmail) || 
+                                mEmail.contains(cleanEmail) ||
+                                syncKey.contains(cleanEmailKey)
                             )
-                            result.add(Pair(newAcc, listOf(tx)))
+
+                            if (isMatch) {
+                                val accName = doc.getString("accountName") ?: "حساب عميل"
+                                val currency = doc.getString("currency") ?: "USD"
+                                val storeName = doc.getString("storeName") ?: ""
+                                val phone = doc.getString("phone") ?: ""
+
+                                val txList = mutableListOf<TransactionEntity>()
+                                try {
+                                    val subSnap = Tasks.await(
+                                        db.collection("live_statements").document(syncKey)
+                                            .collection("transactions").get()
+                                    )
+                                    for (txDoc in subSnap.documents) {
+                                        txList.add(
+                                            TransactionEntity(
+                                                id = txDoc.getLong("id") ?: Math.abs(txDoc.id.hashCode()).toLong(),
+                                                userEmail = cleanEmail,
+                                                accountId = Math.abs(syncKey.hashCode()).toLong(),
+                                                type = txDoc.getString("type") ?: "LANA",
+                                                amount = txDoc.getDouble("amount") ?: 0.0,
+                                                currency = txDoc.getString("currency") ?: currency,
+                                                description = txDoc.getString("description") ?: "",
+                                                date = txDoc.getLong("date") ?: System.currentTimeMillis(),
+                                                dueDate = txDoc.getLong("dueDate"),
+                                                receiptNumber = txDoc.getString("receiptNumber") ?: "",
+                                                isSettled = txDoc.getBoolean("isSettled") ?: false
+                                            )
+                                        )
+                                    }
+                                } catch (e: Exception) {
+                                    e.printStackTrace()
+                                }
+
+                                val virtualAccount = AccountEntity(
+                                    id = Math.abs(syncKey.hashCode()).toLong(),
+                                    userEmail = cleanEmail,
+                                    name = accName,
+                                    phone = phone,
+                                    category = "زبون",
+                                    currency = currency,
+                                    notes = "متجر: $storeName",
+                                    syncKey = syncKey
+                                )
+                                result.add(Pair(virtualAccount, txList.sortedByDescending { it.date }))
+                            }
                         }
+                    } catch (e: Exception) {
+                        e.printStackTrace()
+                    }
+
+                    // 2. Query Firestore root `transactions` for transactions of this merchant
+                    try {
+                        val rootSnap = Tasks.await(db.collection("transactions").get())
+                        for (doc in rootSnap.documents) {
+                            val uEmail = doc.getString("userEmail")?.trim()?.lowercase() ?: ""
+                            if (uEmail == cleanEmail || uEmail.contains(cleanEmail)) {
+                                val accName = doc.getString("accountName") ?: "عميل"
+                                val syncKey = doc.getString("syncKey") ?: ""
+                                val tx = TransactionEntity(
+                                    id = doc.getLong("id") ?: Math.abs(doc.id.hashCode()).toLong(),
+                                    userEmail = cleanEmail,
+                                    accountId = Math.abs(syncKey.hashCode()).toLong(),
+                                    type = doc.getString("type") ?: "LANA",
+                                    amount = doc.getDouble("amount") ?: 0.0,
+                                    currency = doc.getString("currency") ?: "USD",
+                                    description = doc.getString("description") ?: "",
+                                    date = doc.getLong("date") ?: System.currentTimeMillis(),
+                                    dueDate = doc.getLong("dueDate"),
+                                    receiptNumber = doc.getString("receiptNumber") ?: "",
+                                    isSettled = doc.getBoolean("isSettled") ?: false
+                                )
+
+                                val existingPair = result.find { it.first.name.equals(accName, ignoreCase = true) }
+                                if (existingPair != null) {
+                                    if (existingPair.second.none { it.id == tx.id || (it.date == tx.date && it.amount == tx.amount) }) {
+                                        val updatedList = existingPair.second + tx
+                                        val idx = result.indexOf(existingPair)
+                                        result[idx] = Pair(existingPair.first, updatedList.sortedByDescending { it.date })
+                                    }
+                                } else {
+                                    val newAcc = AccountEntity(
+                                        id = Math.abs(accName.hashCode()).toLong(),
+                                        userEmail = cleanEmail,
+                                        name = accName,
+                                        phone = "",
+                                        category = "زبون",
+                                        currency = tx.currency,
+                                        notes = "سجل سحابي",
+                                        syncKey = syncKey
+                                    )
+                                    result.add(Pair(newAcc, listOf(tx)))
+                                }
+                            }
+                        }
+                    } catch (e: Exception) {
+                        e.printStackTrace()
                     }
                 }
             } catch (e: Exception) {
+                // Timeout or network error
                 e.printStackTrace()
             }
 
