@@ -590,4 +590,104 @@ object TawthiqNotificationManager {
             e.printStackTrace()
         }
     }
+
+    /**
+     * Sends direct personal message notification from admin to this specific user
+     */
+    fun sendAdminDirectNotification(
+        context: Context,
+        title: String,
+        message: String
+    ) {
+        if (!areNotificationsEnabled(context)) return
+
+        val intent = Intent(context, MainActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
+            putExtra("target_screen", "notifications")
+        }
+        val pendingIntent = PendingIntent.getActivity(
+            context,
+            (System.currentTimeMillis() % 10000).toInt(),
+            intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+        val builder = NotificationCompat.Builder(context, CHANNEL_GENERAL)
+            .setSmallIcon(R.mipmap.ic_launcher)
+            .setContentTitle("📩 $title")
+            .setContentText(message)
+            .setStyle(NotificationCompat.BigTextStyle().bigText(message))
+            .setPriority(NotificationCompat.PRIORITY_MAX)
+            .setCategory(NotificationCompat.CATEGORY_MESSAGE)
+            .setDefaults(NotificationCompat.DEFAULT_ALL)
+            .setColor(Color.parseColor("#0D9488"))
+            .setContentIntent(pendingIntent)
+            .setAutoCancel(true)
+
+        try {
+            if (ContextCompat.checkSelfPermission(context, android.Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED) {
+                NotificationManagerCompat.from(context).notify((System.currentTimeMillis() % 10000).toInt() + 1000, builder.build())
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
+
+    /**
+     * Sends immediate alert when account status changes (e.g. suspended, banned, activated)
+     */
+    fun sendAccountStatusChangedNotification(
+        context: Context,
+        newStatus: String,
+        reason: String = ""
+    ) {
+        if (!areNotificationsEnabled(context)) return
+
+        val isSuspended = newStatus.equals("SUSPENDED", ignoreCase = true) || newStatus == "موقوف"
+        val isBanned = newStatus.equals("BANNED", ignoreCase = true) || newStatus == "محظور"
+        val isActive = newStatus.equals("ACTIVE", ignoreCase = true) || newStatus == "نشط"
+
+        val title = when {
+            isBanned -> "🚫 تنبيه عاجل: تم حظر الحساب"
+            isSuspended -> "⏸ تنبيه: تم إيقاف الخدمة مؤقتاً"
+            isActive -> "✅ تم تفعيل حسابك بنجاح"
+            else -> "تحديث حالة الحساب: $newStatus"
+        }
+
+        val text = when {
+            isBanned -> reason.ifBlank { "تم إيقاف وحظر حسابك من قِبل إدارة تطبيق البيان. يرجى التواصل مع الإدارة." }
+            isSuspended -> reason.ifBlank { "تم إيقاف الخدمة مؤقتاً لحسابك من قِبل الإدارة. يرجى مراجعة الدعم الفني." }
+            isActive -> "مرحباً بك! حسابك الآن نشط بالكامل ويمكنك استخدام كافة ميزات التطبيق."
+            else -> reason.ifBlank { "تم تحديث حالة حسابك إلى $newStatus" }
+        }
+
+        val intent = Intent(context, MainActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
+        }
+        val pendingIntent = PendingIntent.getActivity(
+            context,
+            9914,
+            intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+        val builder = NotificationCompat.Builder(context, CHANNEL_GENERAL)
+            .setSmallIcon(R.mipmap.ic_launcher)
+            .setContentTitle(title)
+            .setContentText(text)
+            .setStyle(NotificationCompat.BigTextStyle().bigText(text))
+            .setPriority(NotificationCompat.PRIORITY_MAX)
+            .setCategory(NotificationCompat.CATEGORY_ALARM)
+            .setColor(if (isBanned) Color.parseColor("#E11D48") else if (isSuspended) Color.parseColor("#D97706") else Color.parseColor("#059669"))
+            .setContentIntent(pendingIntent)
+            .setAutoCancel(true)
+
+        try {
+            if (ContextCompat.checkSelfPermission(context, android.Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED) {
+                NotificationManagerCompat.from(context).notify(9914, builder.build())
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
 }

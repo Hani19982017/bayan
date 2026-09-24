@@ -31,6 +31,7 @@ import com.google.android.gms.tasks.Tasks
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.SetOptions
 import com.google.firebase.firestore.ListenerRegistration
+import com.google.firebase.firestore.DocumentChange
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 import kotlinx.coroutines.Dispatchers
@@ -353,6 +354,56 @@ class TawthiqViewModel(application: Application) : AndroidViewModel(application)
         val updated = _staffUsers.value + user
         _staffUsers.value = updated
         saveStaffUsers(email, updated)
+
+        // Sync staff user to Firestore database immediately
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val db = FirebaseFirestore.getInstance()
+                val cleanMerchant = email.trim().lowercase().replace(".", "_").replace("@", "_")
+                val cleanName = user.name.trim().lowercase().replace(" ", "_")
+                val staffEmail = if (user.phone.isNotBlank()) "${user.phone}@staff.tawthiq.app" else "$cleanName@tawthiq.app"
+
+                val staffDoc = hashMapOf<String, Any>(
+                    "id" to user.id,
+                    "name" to user.name,
+                    "phone" to user.phone,
+                    "role" to user.role,
+                    "permissionType" to user.permissionType,
+                    "permissions" to user.permissions,
+                    "avatarUri" to user.avatarUri,
+                    "merchantEmail" to email,
+                    "storeName" to _storeName.value,
+                    "createdAt" to System.currentTimeMillis()
+                )
+                db.collection("store_staff").document("staff_${cleanMerchant}_${user.id}").set(staffDoc, SetOptions.merge())
+                db.collection("store_staff").document(cleanName).set(staffDoc, SetOptions.merge())
+
+                // Also register as AdminUserAccount in system_admin_users so Admin sees them live
+                val adminUserDoc = hashMapOf<String, Any>(
+                    "id" to user.id,
+                    "email" to staffEmail,
+                    "username" to cleanName,
+                    "merchantName" to user.name,
+                    "storeName" to _storeName.value,
+                    "phone" to user.phone,
+                    "password" to "123456",
+                    "status" to "ACTIVE",
+                    "plan" to "موظف (${user.role})",
+                    "registeredAt" to System.currentTimeMillis(),
+                    "subscriptionStart" to System.currentTimeMillis(),
+                    "subscriptionExpiry" to (System.currentTimeMillis() + 365L * 86400000L),
+                    "lastActive" to System.currentTimeMillis(),
+                    "notes" to "موظف مضاف من متجر ${_storeName.value}"
+                )
+                db.collection("system_admin_users").document("staff_${cleanMerchant}_${cleanName}").set(adminUserDoc, SetOptions.merge())
+                db.collection("system_admin_users").document(cleanName).set(adminUserDoc, SetOptions.merge())
+                db.collection("system_admin_users").document(staffEmail.replace(".", "_").replace("@", "_")).set(adminUserDoc, SetOptions.merge())
+
+                processAdminDataSync()
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
     }
 
     fun updateStaffUser(user: StaffUser) {
@@ -373,6 +424,28 @@ class TawthiqViewModel(application: Application) : AndroidViewModel(application)
             _currentStaffSession.value = updatedSession
             prefs.edit().putString("staff_avatar_uri", user.avatarUri).apply()
         }
+
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val db = FirebaseFirestore.getInstance()
+                val cleanMerchant = email.trim().lowercase().replace(".", "_").replace("@", "_")
+                val cleanName = user.name.trim().lowercase().replace(" ", "_")
+                val staffDoc = hashMapOf<String, Any>(
+                    "id" to user.id,
+                    "name" to user.name,
+                    "phone" to user.phone,
+                    "role" to user.role,
+                    "permissionType" to user.permissionType,
+                    "permissions" to user.permissions,
+                    "avatarUri" to user.avatarUri,
+                    "updatedAt" to System.currentTimeMillis()
+                )
+                db.collection("store_staff").document("staff_${cleanMerchant}_${user.id}").set(staffDoc, SetOptions.merge())
+                db.collection("store_staff").document(cleanName).set(staffDoc, SetOptions.merge())
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
     }
 
     fun removeStaffUser(userId: String) {
@@ -380,6 +453,16 @@ class TawthiqViewModel(application: Application) : AndroidViewModel(application)
         val updated = _staffUsers.value.filter { it.id != userId }
         _staffUsers.value = updated
         saveStaffUsers(email, updated)
+
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val db = FirebaseFirestore.getInstance()
+                val cleanMerchant = email.trim().lowercase().replace(".", "_").replace("@", "_")
+                db.collection("store_staff").document("staff_${cleanMerchant}_${userId}").delete()
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
     }
 
     // =========================================================================
@@ -552,18 +635,23 @@ class TawthiqViewModel(application: Application) : AndroidViewModel(application)
     fun updateUserStatus(userEmail: String, newStatus: String) {
         val clean = userEmail.trim().lowercase()
         val cleanId = clean.replace(".", "_").replace("@", "_")
+        val cleanUser = clean.substringBefore("@")
         val currentList = _adminUserAccounts.value
         val updated = currentList.map {
-            if (it.email.equals(clean, ignoreCase = true)) it.copy(status = newStatus) else it
+            if (it.email.equals(clean, ignoreCase = true) || it.email.substringBefore("@").equals(cleanUser, ignoreCase = true)) {
+                it.copy(status = newStatus)
+            } else it
         }
         _adminUserAccounts.value = updated
         saveAdminUsersInternal(updated)
         prefs.edit().putString("account_status_$clean", newStatus).apply()
-        if (clean.equals(_userEmail.value.trim().lowercase(), ignoreCase = true)) {
+        prefs.edit().putString("account_status_$cleanUser", newStatus).apply()
+        if (clean.equals(_userEmail.value.trim().lowercase(), ignoreCase = true) ||
+            cleanUser.equals(_userEmail.value.trim().lowercase().substringBefore("@"), ignoreCase = true)) {
             _currentUserAccountStatus.value = newStatus
         }
 
-        // Direct real-time write to Firestore collections under both cleanId and clean email
+        // Direct real-time write to Firestore collections under cleanId, clean, and cleanUser
         viewModelScope.launch(Dispatchers.IO) {
             try {
                 val db = FirebaseFirestore.getInstance()
@@ -573,8 +661,13 @@ class TawthiqViewModel(application: Application) : AndroidViewModel(application)
                 )
                 db.collection("system_admin_users").document(cleanId).set(data, SetOptions.merge())
                 db.collection("system_admin_users").document(clean).set(data, SetOptions.merge())
+                db.collection("system_admin_users").document(cleanUser).set(data, SetOptions.merge())
                 db.collection("user_profiles").document(cleanId).set(data, SetOptions.merge())
                 db.collection("user_profiles").document(clean).set(data, SetOptions.merge())
+                db.collection("user_profiles").document(cleanUser).set(data, SetOptions.merge())
+                db.collection("account_status_updates").document(cleanId).set(data, SetOptions.merge())
+                db.collection("account_status_updates").document(clean).set(data, SetOptions.merge())
+                db.collection("account_status_updates").document(cleanUser).set(data, SetOptions.merge())
 
                 // Direct notification push to user
                 val statusTitle = when (newStatus) {
@@ -601,6 +694,83 @@ class TawthiqViewModel(application: Application) : AndroidViewModel(application)
                     .collection("messages").document(msgDoc["id"] as String).set(msgDoc, SetOptions.merge())
                 db.collection("user_notifications").document(clean)
                     .collection("messages").document(msgDoc["id"] as String).set(msgDoc, SetOptions.merge())
+                db.collection("user_notifications").document(cleanUser)
+                    .collection("messages").document(msgDoc["id"] as String).set(msgDoc, SetOptions.merge())
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
+    }
+
+    /**
+     * Requirement: Admin adds a new user directly
+     */
+    fun createAdminUser(
+        emailOrUsername: String,
+        merchantName: String,
+        storeName: String,
+        phone: String,
+        password: String = "123456",
+        status: String = "ACTIVE",
+        plan: String = "مجاني"
+    ) {
+        val clean = emailOrUsername.trim().lowercase()
+        val effectiveEmail = if (clean.contains("@")) clean else "$clean@tawthiq.app"
+        val cleanId = effectiveEmail.replace(".", "_").replace("@", "_")
+        val cleanUser = clean.substringBefore("@")
+        val derivedMerchant = merchantName.ifBlank { cleanUser }
+        val derivedStore = storeName.ifBlank { "متجر $derivedMerchant" }
+
+        val newUser = AdminUserAccount(
+            id = "usr_${Math.abs(clean.hashCode()) % 100000}",
+            email = effectiveEmail,
+            storeName = derivedStore,
+            merchantName = derivedMerchant,
+            phone = phone,
+            password = password.ifBlank { "123456" },
+            status = status,
+            plan = plan,
+            registeredAt = System.currentTimeMillis(),
+            subscriptionStart = System.currentTimeMillis(),
+            subscriptionExpiry = System.currentTimeMillis() + 30L * 86400000L,
+            totalAccountsCount = 0,
+            totalVolume = 0.0,
+            notes = "تم إنشاء الحساب بواسطة الإدارة"
+        )
+
+        val currentList = _adminUserAccounts.value
+        val updated = listOf(newUser) + currentList.filterNot { 
+            it.email.equals(effectiveEmail, ignoreCase = true) || it.email.substringBefore("@").equals(cleanUser, ignoreCase = true) 
+        }
+        _adminUserAccounts.value = updated
+        saveAdminUsersInternal(updated)
+
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val db = FirebaseFirestore.getInstance()
+                val docData = hashMapOf<String, Any>(
+                    "id" to newUser.id,
+                    "email" to effectiveEmail,
+                    "username" to cleanUser,
+                    "storeName" to derivedStore,
+                    "merchantName" to derivedMerchant,
+                    "phone" to phone,
+                    "password" to newUser.password,
+                    "status" to status,
+                    "plan" to plan,
+                    "registeredAt" to newUser.registeredAt,
+                    "subscriptionStart" to newUser.subscriptionStart,
+                    "subscriptionExpiry" to newUser.subscriptionExpiry,
+                    "lastActive" to System.currentTimeMillis(),
+                    "notes" to newUser.notes
+                )
+                db.collection("system_admin_users").document(cleanId).set(docData, SetOptions.merge())
+                db.collection("system_admin_users").document(effectiveEmail).set(docData, SetOptions.merge())
+                db.collection("system_admin_users").document(cleanUser).set(docData, SetOptions.merge())
+                db.collection("user_profiles").document(cleanId).set(docData, SetOptions.merge())
+                db.collection("user_profiles").document(cleanUser).set(docData, SetOptions.merge())
+                db.collection("account_status_updates").document(cleanId).set(hashMapOf("status" to status), SetOptions.merge())
+                db.collection("account_status_updates").document(cleanUser).set(hashMapOf("status" to status), SetOptions.merge())
             } catch (e: Exception) {
                 e.printStackTrace()
             }
@@ -750,6 +920,15 @@ class TawthiqViewModel(application: Application) : AndroidViewModel(application)
                     .collection("messages").document(newMsg.id).set(doc, SetOptions.merge())
                 db.collection("user_notifications").document(clean)
                     .collection("messages").document(newMsg.id).set(doc, SetOptions.merge())
+                val cleanUser = clean.substringBefore("@")
+                if (cleanUser.isNotBlank()) {
+                    db.collection("user_notifications").document(cleanUser)
+                        .collection("messages").document(newMsg.id).set(doc, SetOptions.merge())
+                    db.collection("user_direct_messages").document(cleanUser)
+                        .collection("inbox").document(newMsg.id).set(doc, SetOptions.merge())
+                }
+                db.collection("user_direct_messages").document(cleanId)
+                    .collection("inbox").document(newMsg.id).set(doc, SetOptions.merge())
             } catch (e: Exception) {
                 e.printStackTrace()
             }
@@ -1204,18 +1383,31 @@ class TawthiqViewModel(application: Application) : AndroidViewModel(application)
                 val adminUsersTask = db.collection("system_admin_users").get()
                 val adminUsersSnap = adminUsersTask.awaitTask()
                 for (doc in adminUsersSnap.documents) {
-                    val email = doc.getString("email")?.trim()?.lowercase() ?: ""
+                    val rawEmail = doc.getString("email")?.trim()?.lowercase()
+                    val rawUsername = doc.getString("username")?.trim()?.lowercase()
+                    val email = when {
+                        !rawEmail.isNullOrBlank() -> rawEmail
+                        !rawUsername.isNullOrBlank() -> if (rawUsername.contains("@")) rawUsername else "$rawUsername@tawthiq.app"
+                        doc.id.isNotBlank() && !doc.id.startsWith("staff_") -> if (doc.id.contains("@")) doc.id else "${doc.id}@tawthiq.app"
+                        else -> rawEmail ?: ""
+                    }
                     if (email.isNotBlank()) {
                         val existing = usersMap[email]
+                        val merchantName = doc.getString("merchantName") ?: doc.getString("name") ?: rawUsername ?: email.substringBefore("@")
+                        val storeName = doc.getString("storeName") ?: existing?.storeName ?: "متجر $merchantName"
+                        val phone = doc.getString("phone") ?: existing?.phone ?: ""
+                        val password = doc.getString("password") ?: existing?.password ?: "123456"
+                        val status = doc.getString("status") ?: existing?.status ?: "ACTIVE"
+                        val plan = doc.getString("plan") ?: existing?.plan ?: "مجاني"
                         usersMap[email] = AdminUserAccount(
                             id = doc.getString("id") ?: existing?.id ?: "usr_${Math.abs(email.hashCode()) % 100000}",
                             email = email,
-                            storeName = doc.getString("storeName") ?: existing?.storeName ?: "متجر البيان",
-                            merchantName = doc.getString("merchantName") ?: existing?.merchantName ?: email.substringBefore("@"),
-                            phone = doc.getString("phone") ?: existing?.phone ?: "",
-                            password = doc.getString("password") ?: existing?.password ?: "123456",
-                            status = doc.getString("status") ?: existing?.status ?: "ACTIVE",
-                            plan = doc.getString("plan") ?: existing?.plan ?: "مجاني",
+                            storeName = storeName,
+                            merchantName = merchantName,
+                            phone = phone,
+                            password = password,
+                            status = status,
+                            plan = plan,
                             registeredAt = doc.getLong("registeredAt") ?: existing?.registeredAt ?: System.currentTimeMillis(),
                             subscriptionStart = doc.getLong("subscriptionStart") ?: existing?.subscriptionStart ?: System.currentTimeMillis(),
                             subscriptionExpiry = doc.getLong("subscriptionExpiry") ?: existing?.subscriptionExpiry ?: (System.currentTimeMillis() + 4L * 86400000L),
@@ -1224,6 +1416,36 @@ class TawthiqViewModel(application: Application) : AndroidViewModel(application)
                             notes = doc.getString("notes") ?: existing?.notes ?: ""
                         )
                     }
+                }
+
+                // 2b. Also read all staff users from store_staff
+                try {
+                    val staffSnap = db.collection("store_staff").get().awaitTask()
+                    for (doc in staffSnap.documents) {
+                        val name = doc.getString("name") ?: doc.getString("merchantName") ?: doc.id
+                        val rawEmail = doc.getString("email")?.trim()?.lowercase()
+                        val email = if (!rawEmail.isNullOrBlank()) rawEmail else "${name.trim().lowercase().replace(" ", "_")}@tawthiq.app"
+                        if (!usersMap.containsKey(email)) {
+                            usersMap[email] = AdminUserAccount(
+                                id = doc.getString("id") ?: doc.id,
+                                email = email,
+                                storeName = doc.getString("storeName") ?: "متجر البيان",
+                                merchantName = name,
+                                phone = doc.getString("phone") ?: "",
+                                password = "staff",
+                                status = doc.getString("status") ?: "ACTIVE",
+                                plan = "موظف (${doc.getString("role") ?: "فريق عمل"})",
+                                registeredAt = doc.getLong("createdAt") ?: System.currentTimeMillis(),
+                                subscriptionStart = System.currentTimeMillis(),
+                                subscriptionExpiry = System.currentTimeMillis() + 365L * 86400000L,
+                                totalAccountsCount = 0,
+                                totalVolume = 0.0,
+                                notes = "مستخدم وموظف في المتجر"
+                            )
+                        }
+                    }
+                } catch (e: Exception) {
+                    e.printStackTrace()
                 }
             } catch (e: Exception) {
                 e.printStackTrace()
@@ -1891,38 +2113,143 @@ class TawthiqViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
-    private var userStatusListenerRegistration: com.google.firebase.firestore.ListenerRegistration? = null
+    private val userStatusListeners = mutableListOf<com.google.firebase.firestore.ListenerRegistration>()
+    private val directMessagesListeners = mutableListOf<com.google.firebase.firestore.ListenerRegistration>()
 
     fun listenToUserAccountStatus(email: String) {
         val cleanEmail = email.trim().lowercase()
         if (cleanEmail.isBlank()) return
         val cleanId = cleanEmail.replace(".", "_").replace("@", "_")
-        userStatusListenerRegistration?.remove()
+        val cleanUser = cleanEmail.substringBefore("@")
+
+        for (reg in userStatusListeners) {
+            reg.remove()
+        }
+        userStatusListeners.clear()
 
         try {
             val db = FirebaseFirestore.getInstance()
-            userStatusListenerRegistration = db.collection("system_admin_users").document(cleanId).addSnapshotListener { snapshot, e ->
-                if (e != null || snapshot == null || !snapshot.exists()) return@addSnapshotListener
-                val status = snapshot.getString("status")
-                if (!status.isNullOrBlank()) {
-                    _currentUserAccountStatus.value = status
-                    prefs.edit().putString("account_status_$cleanEmail", status).apply()
+            val docPaths = mutableListOf(
+                db.collection("system_admin_users").document(cleanId),
+                db.collection("system_admin_users").document(cleanEmail),
+                db.collection("account_status_updates").document(cleanId)
+            )
+            if (cleanUser.isNotBlank() && cleanUser != cleanId) {
+                docPaths.add(db.collection("system_admin_users").document(cleanUser))
+                docPaths.add(db.collection("account_status_updates").document(cleanUser))
+            }
+
+            for (docRef in docPaths) {
+                val reg = docRef.addSnapshotListener { snapshot, e ->
+                    if (e != null || snapshot == null || !snapshot.exists()) return@addSnapshotListener
+                    val status = snapshot.getString("status")
+                    if (!status.isNullOrBlank()) {
+                        val prevStatus = _currentUserAccountStatus.value
+                        _currentUserAccountStatus.value = status
+                        prefs.edit()
+                            .putString("account_status_$cleanEmail", status)
+                            .putString("account_status_$cleanUser", status)
+                            .apply()
+
+                        // If status changed from active to suspended/banned or vice-versa, alert user immediately!
+                        if (!status.equals(prevStatus, ignoreCase = true)) {
+                            TawthiqNotificationManager.sendAccountStatusChangedNotification(
+                                context = getApplication(),
+                                newStatus = status
+                            )
+                        }
+                    }
+                    val plan = snapshot.getString("plan")
+                    val expiry = snapshot.getLong("subscriptionExpiry")
+                    if (!plan.isNullOrBlank() && expiry != null && expiry > 0) {
+                        val isPro = plan != "مجاني"
+                        _subscriptionInfo.value = _subscriptionInfo.value.copy(
+                            planName = plan,
+                            isPro = isPro,
+                            expiryDate = expiry
+                        )
+                        prefs.edit()
+                            .putBoolean("is_pro_$cleanEmail", isPro)
+                            .putString("plan_name_$cleanEmail", plan)
+                            .putLong("subscription_expiry_$cleanEmail", expiry)
+                            .apply()
+                    }
                 }
-                val plan = snapshot.getString("plan")
-                val expiry = snapshot.getLong("subscriptionExpiry")
-                if (!plan.isNullOrBlank() && expiry != null && expiry > 0) {
-                    val isPro = plan != "مجاني"
-                    _subscriptionInfo.value = _subscriptionInfo.value.copy(
-                        planName = plan,
-                        isPro = isPro,
-                        expiryDate = expiry
-                    )
-                    prefs.edit()
-                        .putBoolean("is_pro_$cleanEmail", isPro)
-                        .putString("plan_name_$cleanEmail", plan)
-                        .putLong("subscription_expiry_$cleanEmail", expiry)
-                        .apply()
+                userStatusListeners.add(reg)
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
+
+    /**
+     * Real-time listener for direct personal messages from Admin to this specific User
+     */
+    fun listenToUserDirectMessages(email: String) {
+        val cleanEmail = email.trim().lowercase()
+        if (cleanEmail.isBlank()) return
+        val cleanId = cleanEmail.replace(".", "_").replace("@", "_")
+        val cleanUser = cleanEmail.substringBefore("@")
+
+        for (reg in directMessagesListeners) {
+            reg.remove()
+        }
+        directMessagesListeners.clear()
+
+        try {
+            val db = FirebaseFirestore.getInstance()
+            val collectionPaths = mutableListOf(
+                db.collection("user_notifications").document(cleanId).collection("messages"),
+                db.collection("user_notifications").document(cleanEmail).collection("messages"),
+                db.collection("user_direct_messages").document(cleanId).collection("inbox")
+            )
+            if (cleanUser.isNotBlank() && cleanUser != cleanId) {
+                collectionPaths.add(db.collection("user_notifications").document(cleanUser).collection("messages"))
+                collectionPaths.add(db.collection("user_direct_messages").document(cleanUser).collection("inbox"))
+            }
+
+            for (colRef in collectionPaths) {
+                var isFirst = true
+                val reg = colRef.addSnapshotListener { snapshot, e ->
+                    if (e != null || snapshot == null) return@addSnapshotListener
+                    val wasInitial = isFirst
+                    isFirst = false
+
+                    val newDirectMsgs = mutableListOf<SystemBroadcastMessage>()
+                    for (doc in snapshot.documents) {
+                        val id = doc.getString("id") ?: doc.id
+                        val title = doc.getString("title") ?: ""
+                        val msg = doc.getString("message") ?: ""
+                        val sender = doc.getString("sender") ?: "إدارة تطبيق البيان (رسالة خاصة)"
+                        val sentAt = doc.getLong("sentAt") ?: System.currentTimeMillis()
+                        if (title.isNotBlank() || msg.isNotBlank()) {
+                            newDirectMsgs.add(SystemBroadcastMessage(id, title, msg, sender, sentAt))
+                        }
+                    }
+
+                    if (newDirectMsgs.isNotEmpty()) {
+                        val combined = (newDirectMsgs + _systemBroadcasts.value).distinctBy { it.id }.sortedByDescending { it.sentAt }
+                        _systemBroadcasts.value = combined
+                        saveBroadcastMessagesInternal(combined)
+
+                        if (!wasInitial) {
+                            for (dc in snapshot.documentChanges) {
+                                if (dc.type == DocumentChange.Type.ADDED) {
+                                    val newDoc = dc.document
+                                    val title = newDoc.getString("title") ?: "رسالة خاصة جديدة"
+                                    val msg = newDoc.getString("message") ?: ""
+                                    unreadNotificationCount.value = unreadNotificationCount.value + 1
+                                    TawthiqNotificationManager.sendAdminDirectNotification(
+                                        context = getApplication(),
+                                        title = title,
+                                        message = msg
+                                    )
+                                }
+                            }
+                        }
+                    }
                 }
+                directMessagesListeners.add(reg)
             }
         } catch (e: Exception) {
             e.printStackTrace()
@@ -1934,13 +2261,24 @@ class TawthiqViewModel(application: Application) : AndroidViewModel(application)
             val cleanEmail = _userEmail.value.trim().lowercase()
             if (cleanEmail.isBlank()) return@launch
             val cleanId = cleanEmail.replace(".", "_").replace("@", "_")
+            val cleanUser = cleanEmail.substringBefore("@")
             try {
                 val db = FirebaseFirestore.getInstance()
-                val snapshot = db.collection("system_admin_users").document(cleanId).get().awaitTask()
+                var snapshot = db.collection("system_admin_users").document(cleanId).get().awaitTask()
+                if (!snapshot.exists()) {
+                    snapshot = db.collection("system_admin_users").document(cleanEmail).get().awaitTask()
+                }
+                if (!snapshot.exists() && cleanUser.isNotBlank()) {
+                    snapshot = db.collection("system_admin_users").document(cleanUser).get().awaitTask()
+                }
+
                 if (snapshot.exists()) {
                     val status = snapshot.getString("status") ?: "ACTIVE"
                     _currentUserAccountStatus.value = status
-                    prefs.edit().putString("account_status_$cleanEmail", status).apply()
+                    prefs.edit()
+                        .putString("account_status_$cleanEmail", status)
+                        .putString("account_status_$cleanUser", status)
+                        .apply()
                     val plan = snapshot.getString("plan")
                     val expiry = snapshot.getLong("subscriptionExpiry")
                     if (!plan.isNullOrBlank() && expiry != null && expiry > 0) {
@@ -2053,6 +2391,7 @@ class TawthiqViewModel(application: Application) : AndroidViewModel(application)
         viewModelScope.launch(Dispatchers.IO) {
             try {
                 val cleanId = cleanEmail.replace(".", "_").replace("@", "_")
+                val cleanUser = cleanEmail.substringBefore("@")
                 val db = FirebaseFirestore.getInstance()
                 val docRef = db.collection("system_admin_users").document(cleanId)
                 val snapshot = docRef.get().awaitTask()
@@ -2063,7 +2402,10 @@ class TawthiqViewModel(application: Application) : AndroidViewModel(application)
                     val cloudExpiry = snapshot.getLong("subscriptionExpiry") ?: (System.currentTimeMillis() + 4L * 86400000L)
 
                     _currentUserAccountStatus.value = cloudStatus
-                    prefs.edit().putString("account_status_$cleanEmail", cloudStatus).apply()
+                    prefs.edit()
+                        .putString("account_status_$cleanEmail", cloudStatus)
+                        .putString("account_status_$cleanUser", cloudStatus)
+                        .apply()
 
                     val updateFields = hashMapOf<String, Any>(
                         "lastActive" to System.currentTimeMillis()
@@ -2074,10 +2416,15 @@ class TawthiqViewModel(application: Application) : AndroidViewModel(application)
                     if (password.isNotBlank()) updateFields["password"] = password.trim()
 
                     docRef.set(updateFields, SetOptions.merge())
+                    db.collection("system_admin_users").document(cleanEmail).set(updateFields, SetOptions.merge())
+                    if (cleanUser.isNotBlank()) {
+                        db.collection("system_admin_users").document(cleanUser).set(updateFields, SetOptions.merge())
+                    }
                 } else {
                     val userDoc = hashMapOf<String, Any>(
                         "id" to "usr_${Math.abs(cleanEmail.hashCode()) % 100000}",
                         "email" to cleanEmail,
+                        "username" to cleanUser,
                         "storeName" to derivedStore,
                         "merchantName" to derivedMerchant,
                         "phone" to derivedPhone,
@@ -2090,9 +2437,17 @@ class TawthiqViewModel(application: Application) : AndroidViewModel(application)
                         "lastActive" to System.currentTimeMillis()
                     )
                     docRef.set(userDoc, SetOptions.merge())
+                    db.collection("system_admin_users").document(cleanEmail).set(userDoc, SetOptions.merge())
+                    if (cleanUser.isNotBlank()) {
+                        db.collection("system_admin_users").document(cleanUser).set(userDoc, SetOptions.merge())
+                        db.collection("user_profiles").document(cleanUser).set(userDoc, SetOptions.merge())
+                    }
+                    db.collection("user_profiles").document(cleanId).set(userDoc, SetOptions.merge())
                 }
 
                 listenToUserAccountStatus(cleanEmail)
+                listenToUserDirectMessages(cleanEmail)
+                processAdminDataSync()
             } catch (e: Exception) {
                 e.printStackTrace()
             }
@@ -2297,6 +2652,7 @@ class TawthiqViewModel(application: Application) : AndroidViewModel(application)
         listenToSystemBroadcasts()
         listenToPaymentMethods()
         listenToUserAccountStatus(_userEmail.value)
+        listenToUserDirectMessages(_userEmail.value)
         syncAllUserAccountsAndTransactionsToCloud()
 
         // Automatically clean and deduplicate all transactions across accounts on startup

@@ -102,6 +102,7 @@ import com.example.data.model.AdminUserAccount
 import com.example.data.model.PaymentMethodConfig
 import com.example.data.model.SubscriptionPaymentRequest
 import com.example.data.model.SystemBroadcastMessage
+import com.example.ui.components.AddAdminUserDialog
 import com.example.ui.components.AddEditPaymentMethodDialog
 import com.example.ui.components.AdminCustomerLedgerDialog
 import com.example.ui.components.ChangeUserPasswordDialog
@@ -150,6 +151,7 @@ fun AdminDashboardScreen(
     var showAddPaymentDialog by remember { mutableStateOf(false) }
     var selectedPaymentForEdit by remember { mutableStateOf<PaymentMethodConfig?>(null) }
     var showBroadcastDialog by remember { mutableStateOf(false) }
+    var showAddUserDialog by remember { mutableStateOf(false) }
     var userToDelete by remember { mutableStateOf<AdminUserAccount?>(null) }
     var userForDirectMessage by remember { mutableStateOf<AdminUserAccount?>(null) }
 
@@ -308,7 +310,8 @@ fun AdminDashboardScreen(
                             onSubscriptionClick = { selectedUserForSubscription = it },
                             onLedgerClick = { selectedUserForLedger = it },
                             onDeleteClick = { userToDelete = it },
-                            onSendMessageClick = { userForDirectMessage = it }
+                            onSendMessageClick = { userForDirectMessage = it },
+                            onAddUserClick = { showAddUserDialog = true }
                         )
                         1 -> AdminPaymentRequestsTab(
                             requests = paymentRequests,
@@ -389,6 +392,13 @@ fun AdminDashboardScreen(
             )
         }
 
+        if (showAddUserDialog) {
+            AddAdminUserDialog(
+                viewModel = viewModel,
+                onDismiss = { showAddUserDialog = false }
+            )
+        }
+
         userForDirectMessage?.let { user ->
             SendUserDirectMessageDialog(
                 userAccount = user,
@@ -436,7 +446,8 @@ private fun AdminUsersTab(
     onSubscriptionClick: (AdminUserAccount) -> Unit,
     onLedgerClick: (AdminUserAccount) -> Unit,
     onDeleteClick: (AdminUserAccount) -> Unit,
-    onSendMessageClick: (AdminUserAccount) -> Unit
+    onSendMessageClick: (AdminUserAccount) -> Unit,
+    onAddUserClick: () -> Unit = {}
 ) {
     val context = LocalContext.current
     var searchQuery by remember { mutableStateOf("") }
@@ -464,17 +475,34 @@ private fun AdminUsersTab(
         contentPadding = PaddingValues(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        // Search and Filter Bar
+        // Search and Add User Row
         item {
-            OutlinedTextField(
-                value = searchQuery,
-                onValueChange = { searchQuery = it },
-                placeholder = { Text("بحث بالاسم، المتجر، الإيميل أو الهاتف...") },
-                leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
-                singleLine = true,
-                shape = RoundedCornerShape(12.dp),
-                modifier = Modifier.fillMaxWidth()
-            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                OutlinedTextField(
+                    value = searchQuery,
+                    onValueChange = { searchQuery = it },
+                    placeholder = { Text("بحث بالاسم، المتجر، الإيميل...") },
+                    leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
+                    singleLine = true,
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier.weight(1f)
+                )
+
+                Button(
+                    onClick = onAddUserClick,
+                    colors = ButtonDefaults.buttonColors(containerColor = TawthiqPrimary),
+                    shape = RoundedCornerShape(12.dp),
+                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 14.dp)
+                ) {
+                    Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text("إضافة مستخدم", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                }
+            }
         }
 
         item {

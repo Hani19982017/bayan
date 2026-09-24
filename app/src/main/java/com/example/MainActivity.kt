@@ -220,6 +220,7 @@ fun TawthiqApp(
     LaunchedEffect(userEmail) {
         if (userEmail.isNotBlank()) {
             viewModel.listenToUserAccountStatus(userEmail)
+            viewModel.listenToUserDirectMessages(userEmail)
         }
     }
 

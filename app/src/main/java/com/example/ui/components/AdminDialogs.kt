@@ -7,6 +7,8 @@ import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -24,6 +26,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.AccountBalance
 import androidx.compose.material.icons.filled.AccountBalanceWallet
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ContentCopy
@@ -741,6 +744,153 @@ fun SendUserDirectMessageDialog(
                     Icon(imageVector = Icons.AutoMirrored.Filled.Send, contentDescription = null, modifier = Modifier.size(16.dp))
                     Spacer(modifier = Modifier.width(4.dp))
                     Text("إرسال للمستخدم فوراً", fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                OutlinedButton(onClick = onDismiss, shape = RoundedCornerShape(8.dp)) {
+                    Text("إلغاء")
+                }
+            }
+        )
+    }
+}
+
+@Composable
+fun AddAdminUserDialog(
+    viewModel: TawthiqViewModel,
+    onDismiss: () -> Unit
+) {
+    val context = LocalContext.current
+    var name by remember { mutableStateOf("") }
+    var storeName by remember { mutableStateOf("") }
+    var emailOrUser by remember { mutableStateOf("") }
+    var phone by remember { mutableStateOf("") }
+    var password by remember { mutableStateOf("123456") }
+    var plan by remember { mutableStateOf("مجاني") }
+
+    CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
+        AlertDialog(
+            onDismissRequest = onDismiss,
+            title = {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(imageVector = Icons.Default.Add, contentDescription = null, tint = TawthiqPrimary)
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("إضافة مستخدم جديد للنظام", fontWeight = FontWeight.Bold)
+                }
+            },
+            text = {
+                Column(
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                    modifier = Modifier.verticalScroll(rememberScrollState())
+                ) {
+                    Text(
+                        text = "يمكنك إضافة أي تاجر أو مستخدم جديد (مثل: menesy) وسيتصل حسابه بالسحابة فوراً.",
+                        fontSize = 12.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+
+                    OutlinedTextField(
+                        value = name,
+                        onValueChange = { name = it },
+                        label = { Text("اسم التاجر / المستخدم *") },
+                        placeholder = { Text("مثال: menesy أو محمد أحمد") },
+                        singleLine = true,
+                        shape = RoundedCornerShape(10.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+
+                    OutlinedTextField(
+                        value = emailOrUser,
+                        onValueChange = { emailOrUser = it },
+                        label = { Text("اسم الدخول أو البريد *") },
+                        placeholder = { Text("مثال: menesy أو menesy@gmail.com") },
+                        singleLine = true,
+                        shape = RoundedCornerShape(10.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+
+                    OutlinedTextField(
+                        value = storeName,
+                        onValueChange = { storeName = it },
+                        label = { Text("اسم المتجر (اختياري)") },
+                        placeholder = { Text("مثال: متجر البيان") },
+                        singleLine = true,
+                        shape = RoundedCornerShape(10.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+
+                    OutlinedTextField(
+                        value = phone,
+                        onValueChange = { phone = it },
+                        label = { Text("رقم الهاتف (اختياري)") },
+                        placeholder = { Text("+9665...") },
+                        singleLine = true,
+                        shape = RoundedCornerShape(10.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+
+                    OutlinedTextField(
+                        value = password,
+                        onValueChange = { password = it },
+                        label = { Text("كلمة المرور") },
+                        singleLine = true,
+                        shape = RoundedCornerShape(10.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        listOf("مجاني", "شهري", "سنوي", "شامل").forEach { p ->
+                            val isSel = plan == p
+                            Box(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(if (isSel) TawthiqPrimary else MaterialTheme.colorScheme.surfaceVariant)
+                                    .clickable { plan = p }
+                                    .padding(vertical = 8.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = p,
+                                    color = if (isSel) Color.White else MaterialTheme.colorScheme.onSurface,
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        val inputUser = emailOrUser.ifBlank { name }.trim()
+                        if (inputUser.isBlank()) {
+                            Toast.makeText(context, "يرجى إدخال اسم المستخدم أو البريد", Toast.LENGTH_SHORT).show()
+                            return@Button
+                        }
+                        val finalName = name.ifBlank { inputUser }
+                        val finalStore = storeName.ifBlank { "متجر $finalName" }
+
+                        viewModel.createAdminUser(
+                            emailOrUsername = inputUser,
+                            merchantName = finalName,
+                            storeName = finalStore,
+                            phone = phone.trim(),
+                            password = password.ifBlank { "123456" },
+                            status = "ACTIVE",
+                            plan = plan
+                        )
+                        Toast.makeText(context, "تمت إضافة المستخدم ($finalName) بنجاح ✓", Toast.LENGTH_SHORT).show()
+                        onDismiss()
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = TawthiqPrimary),
+                    shape = RoundedCornerShape(8.dp)
+                ) {
+                    Text("إضافة وحفظ الحساب", fontWeight = FontWeight.Bold)
                 }
             },
             dismissButton = {

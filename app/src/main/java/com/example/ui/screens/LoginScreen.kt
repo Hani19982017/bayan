@@ -339,7 +339,7 @@ fun LoginScreen(
 
             Spacer(modifier = Modifier.height(14.dp))
 
-            // 6b. Email quick entry link
+            // 6b. Email / Username quick entry link
             TextButton(
                 onClick = { showDirectEmailDialog = true },
                 modifier = Modifier.testTag("direct_email_login_btn")
@@ -347,7 +347,7 @@ fun LoginScreen(
                 Icon(Icons.Default.Email, contentDescription = null, tint = TawthiqPrimary, modifier = Modifier.size(18.dp))
                 Spacer(modifier = Modifier.width(6.dp))
                 Text(
-                    text = "تسجيل الدخول بالبريد الإلكتروني المباشر",
+                    text = "تسجيل الدخول باسم المستخدم أو البريد الإلكتروني",
                     color = TawthiqPrimary,
                     fontSize = 13.sp,
                     fontWeight = FontWeight.SemiBold
@@ -455,21 +455,21 @@ fun LoginScreen(
             onDismissRequest = { showDirectEmailDialog = false },
             title = {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Default.Email, contentDescription = null, tint = TawthiqPrimary)
+                    Icon(Icons.Default.AccountCircle, contentDescription = null, tint = TawthiqPrimary)
                     Spacer(modifier = Modifier.width(8.dp))
-                    Text("الدخول بالبريد الإلكتروني", fontWeight = FontWeight.Bold)
+                    Text("الدخول باسم المستخدم أو البريد", fontWeight = FontWeight.Bold)
                 }
             },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Text("أدخل بريدك الإلكتروني لإدارة حساباتك المالية:")
+                    Text("أدخل اسم المستخدم (مثال: menesy) أو البريد الإلكتروني لإدارة حساباتك المالية:")
                     OutlinedTextField(
                         value = directEmail,
                         onValueChange = { 
                             directEmail = it
                             emailError = null
                         },
-                        label = { Text("البريد الإلكتروني (مثال: user@gmail.com)") },
+                        label = { Text("اسم المستخدم أو البريد (مثال: menesy أو name@gmail.com)") },
                         isError = emailError != null,
                         supportingText = {
                             if (emailError != null) {
@@ -492,21 +492,21 @@ fun LoginScreen(
                 Button(
                     onClick = {
                         val trimmed = directEmail.trim().lowercase()
-                        val isValidEmail = android.util.Patterns.EMAIL_ADDRESS.matcher(trimmed).matches()
-                        if (isValidEmail) {
-                            val name = if (directName.isNotBlank()) directName.trim() else trimmed.substringBefore("@")
-                            viewModel.loginWithEmail(
-                                email = trimmed,
-                                merchant = name,
-                                store = "متجر $name"
-                            )
-                            TawthiqNotificationManager.sendWelcomePushNotification(context, force = true, merchantEmail = trimmed)
-                            showDirectEmailDialog = false
-                            Toast.makeText(context, "تم تسجيل الدخول بنجاح ✓", Toast.LENGTH_SHORT).show()
-                            onLoginSuccess()
-                        } else {
-                            emailError = "يرجى كتابة عنوان بريد إلكتروني صالح (مثال: name@gmail.com)"
+                        if (trimmed.isBlank()) {
+                            emailError = "يرجى كتابة اسم المستخدم أو البريد الإلكتروني"
+                            return@Button
                         }
+                        val effectiveEmail = if (trimmed.contains("@")) trimmed else "$trimmed@tawthiq.app"
+                        val name = if (directName.isNotBlank()) directName.trim() else trimmed.substringBefore("@")
+                        viewModel.loginWithEmail(
+                            email = effectiveEmail,
+                            merchant = name,
+                            store = if (directName.isNotBlank()) "متجر ${directName.trim()}" else "متجر $name"
+                        )
+                        TawthiqNotificationManager.sendWelcomePushNotification(context, force = true, merchantEmail = effectiveEmail)
+                        showDirectEmailDialog = false
+                        Toast.makeText(context, "تم تسجيل الدخول بنجاح ✓", Toast.LENGTH_SHORT).show()
+                        onLoginSuccess()
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = TawthiqPrimary)
                 ) {

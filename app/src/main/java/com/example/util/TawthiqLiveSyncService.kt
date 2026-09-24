@@ -280,6 +280,66 @@ class TawthiqLiveSyncService : Service() {
 
                     firestoreListeners[syncKey] = registration
                 }
+
+                // Attach 24/7 background listener for account status & direct messages
+                val userEmail = prefs.getString("user_email", "")?.trim()?.lowercase() ?: ""
+                if (userEmail.isNotBlank()) {
+                    val cleanId = userEmail.replace(".", "_").replace("@", "_")
+                    val cleanUser = userEmail.substringBefore("@")
+
+                    // Status listener
+                    val statusKey = "status_$cleanId"
+                    if (!firestoreListeners.containsKey(statusKey)) {
+                        val statusReg = firestore.collection("system_admin_users")
+                            .document(cleanId)
+                            .addSnapshotListener { snapshot, error ->
+                                if (error == null && snapshot != null && snapshot.exists()) {
+                                    val status = snapshot.getString("status") ?: "ACTIVE"
+                                    val currentSaved = prefs.getString("account_status_$userEmail", "ACTIVE")
+                                    if (!status.equals(currentSaved, ignoreCase = true)) {
+                                        prefs.edit()
+                                            .putString("account_status_$userEmail", status)
+                                            .putString("account_status_$cleanUser", status)
+                                            .apply()
+                                        TawthiqNotificationManager.sendAccountStatusChangedNotification(
+                                            context = applicationContext,
+                                            newStatus = status
+                                        )
+                                    }
+                                }
+                            }
+                        firestoreListeners[statusKey] = statusReg
+                    }
+
+                    // Direct message listener
+                    val msgKey = "msgs_$cleanId"
+                    if (!firestoreListeners.containsKey(msgKey)) {
+                        var initialMsgs = true
+                        val msgReg = firestore.collection("user_notifications")
+                            .document(cleanId)
+                            .collection("messages")
+                            .addSnapshotListener { snapshot, error ->
+                                if (error != null || snapshot == null) return@addSnapshotListener
+                                val wasInit = initialMsgs
+                                initialMsgs = false
+                                if (!wasInit) {
+                                    for (dc in snapshot.documentChanges) {
+                                        if (dc.type == DocumentChange.Type.ADDED) {
+                                            val doc = dc.document
+                                            val title = doc.getString("title") ?: "رسالة خاصة جديدة"
+                                            val message = doc.getString("message") ?: ""
+                                            TawthiqNotificationManager.sendAdminDirectNotification(
+                                                context = applicationContext,
+                                                title = title,
+                                                message = message
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        firestoreListeners[msgKey] = msgReg
+                    }
+                }
             } catch (e: Exception) {
                 Log.e(TAG, "Error attaching listeners", e)
             }
