@@ -40,11 +40,20 @@ import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.QrCodeScanner
 import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material.icons.filled.VerifiedUser
+import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.material.icons.filled.VisibilityOff
+import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.Storefront
+import androidx.compose.material.icons.filled.Phone
+import androidx.compose.material.icons.filled.ErrorOutline
+import androidx.compose.material.icons.filled.Key
+import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -54,10 +63,17 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Tab
+import androidx.compose.material3.TabRow
+import androidx.compose.material3.TabRowDefaults
+import androidx.compose.material3.TabRowDefaults.tabIndicatorOffset
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
+import com.example.util.MerchantAuthService
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -104,29 +120,107 @@ fun LoginScreen(
     var showHelpDialog by remember { mutableStateOf(false) }
     var showVideoDialog by remember { mutableStateOf(false) }
     var showTermsDialog by remember { mutableStateOf(false) }
-    var showDirectEmailDialog by remember { mutableStateOf(false) }
+    var showPasswordRecoveryDialog by remember { mutableStateOf(false) }
     var isAuthenticating by remember { mutableStateOf(false) }
 
-    fun authenticateWithEmail(email: String, name: String = "") {
-        val cleanEmail = email.trim().lowercase()
-        val derivedName = if (name.isNotBlank()) name else cleanEmail.substringBefore("@")
-        val isNew = viewModel.isNewAccount(cleanEmail)
+    // Tab state: 0 = تسجيل الدخول, 1 = إنشاء حساب تاجر جديد
+    var selectedAuthTab by remember { mutableIntStateOf(0) }
 
-        viewModel.loginWithEmail(
-            email = cleanEmail,
-            merchant = derivedName,
-            store = "متجر $derivedName"
-        )
-        isAuthenticating = false
+    // Registration states
+    var regEmail by remember { mutableStateOf("") }
+    var regMerchantName by remember { mutableStateOf("") }
+    var regStoreName by remember { mutableStateOf("") }
+    var regPhone by remember { mutableStateOf("") }
+    var regPassword by remember { mutableStateOf("") }
+    var regConfirmPassword by remember { mutableStateOf("") }
+    var regPasswordVisible by remember { mutableStateOf(false) }
+    var regErrorMessage by remember { mutableStateOf<String?>(null) }
+    var isRegistering by remember { mutableStateOf(false) }
 
-        if (isNew) {
-            TawthiqNotificationManager.sendWelcomePushNotification(context, force = true, merchantEmail = cleanEmail)
-            Toast.makeText(context, "مرحباً بك في البيان! بدأت الآن فترة تجربتك المجانية لمدة 4 أيام ✨", Toast.LENGTH_LONG).show()
-        } else {
-            TawthiqNotificationManager.sendReturningWelcomePushNotification(context, merchantName = derivedName, merchantEmail = cleanEmail)
-            Toast.makeText(context, "أهلاً بك مجدداً في البيان يا $derivedName 👋", Toast.LENGTH_LONG).show()
+    // Login states
+    var loginEmail by remember { mutableStateOf("") }
+    var loginPassword by remember { mutableStateOf("") }
+    var loginPasswordVisible by remember { mutableStateOf(false) }
+    var loginErrorMessage by remember { mutableStateOf<String?>(null) }
+    var isLoggingIn by remember { mutableStateOf(false) }
+
+    // Password Recovery states
+    var recoveryEmail by remember { mutableStateOf("") }
+    var recoveryNewPassword by remember { mutableStateOf("") }
+    var recoveryConfirmPassword by remember { mutableStateOf("") }
+    var recoveryErrorMessage by remember { mutableStateOf<String?>(null) }
+    var isRecovering by remember { mutableStateOf(false) }
+
+    fun handleRegistrationSubmit() {
+        val cleanEmail = MerchantAuthService.normalizeEmail(regEmail)
+        if (!MerchantAuthService.isValidEmail(cleanEmail)) {
+            regErrorMessage = MerchantAuthService.ERR_INVALID_EMAIL
+            return
         }
-        onLoginSuccess()
+        if (regMerchantName.trim().isBlank()) {
+            regErrorMessage = "يرجى إدخال اسم التاجر / المالك"
+            return
+        }
+        if (regPassword.length < 6) {
+            regErrorMessage = "يجب أن تكون كلمة المرور 6 أحرف أو أرقام على الأقل"
+            return
+        }
+        if (regPassword != regConfirmPassword) {
+            regErrorMessage = "كلمة المرور وتأكيد كلمة المرور غير متطابقتين"
+            return
+        }
+
+        regErrorMessage = null
+        isRegistering = true
+
+        val store = regStoreName.trim().ifBlank { "متجر ${regMerchantName.trim()}" }
+        val phone = regPhone.trim().ifBlank { "+966500000000" }
+
+        viewModel.registerMerchant(
+            email = cleanEmail,
+            merchantName = regMerchantName.trim(),
+            storeName = store,
+            phone = phone,
+            password = regPassword.trim()
+        ) { success, message ->
+            isRegistering = false
+            if (success) {
+                TawthiqNotificationManager.sendWelcomePushNotification(context, force = true, merchantEmail = cleanEmail)
+                Toast.makeText(context, "مرحباً بك في البيان! بدأت الآن تجربتك المجانية لمدة 4 أيام ✨", Toast.LENGTH_LONG).show()
+                onLoginSuccess()
+            } else {
+                regErrorMessage = message
+                Toast.makeText(context, message, Toast.LENGTH_LONG).show()
+            }
+        }
+    }
+
+    fun handleLoginSubmit() {
+        val cleanEmail = MerchantAuthService.normalizeEmail(loginEmail)
+        if (cleanEmail.isBlank()) {
+            loginErrorMessage = "يرجى إدخال البريد الإلكتروني أو اسم المستخدم"
+            return
+        }
+
+        val effectiveEmail = if (cleanEmail.contains("@")) cleanEmail else "$cleanEmail@tawthiq.app"
+        loginErrorMessage = null
+        isLoggingIn = true
+
+        viewModel.verifyAndLoginMerchant(
+            email = effectiveEmail,
+            password = loginPassword.trim()
+        ) { success, message ->
+            isLoggingIn = false
+            if (success) {
+                val derivedName = effectiveEmail.substringBefore("@")
+                TawthiqNotificationManager.sendReturningWelcomePushNotification(context, merchantName = derivedName, merchantEmail = effectiveEmail)
+                Toast.makeText(context, "أهلاً بك مجدداً في البيان 👋", Toast.LENGTH_SHORT).show()
+                onLoginSuccess()
+            } else {
+                loginErrorMessage = message
+                Toast.makeText(context, message, Toast.LENGTH_LONG).show()
+            }
+        }
     }
 
     // Result launcher for Google Account picker
@@ -135,15 +229,49 @@ fun LoginScreen(
     ) { result ->
         isAuthenticating = false
         val account = GoogleAuthHelper.getAccountFromIntent(result.data)
-        if (account != null && account.email.isNotBlank()) {
-            authenticateWithEmail(account.email, account.displayName)
+        val selectedEmail = if (account != null && account.email.isNotBlank()) {
+            account.email
         } else {
-            val selectedEmail = result.data?.getStringExtra(AccountManager.KEY_ACCOUNT_NAME)
+            result.data?.getStringExtra(AccountManager.KEY_ACCOUNT_NAME)
                 ?: result.data?.getStringExtra("accountName")
                 ?: result.data?.getStringExtra("authAccount")
                 ?: result.data?.getStringExtra("email")
-            if (!selectedEmail.isNullOrBlank() && selectedEmail.contains("@")) {
-                authenticateWithEmail(selectedEmail)
+        }
+
+        if (!selectedEmail.isNullOrBlank() && selectedEmail.contains("@")) {
+            val cleanEmail = MerchantAuthService.normalizeEmail(selectedEmail)
+            val displayName = account?.displayName ?: cleanEmail.substringBefore("@")
+
+            if (selectedAuthTab == 1) {
+                // User is in "إنشاء حساب تاجر جديد" mode -> Strictly register atomically
+                isRegistering = true
+                viewModel.registerMerchant(
+                    email = cleanEmail,
+                    merchantName = displayName,
+                    storeName = "متجر $displayName",
+                    phone = "+966500000000",
+                    password = "GoogleOAuth_${cleanEmail.hashCode()}"
+                ) { success, message ->
+                    isRegistering = false
+                    if (success) {
+                        TawthiqNotificationManager.sendWelcomePushNotification(context, force = true, merchantEmail = cleanEmail)
+                        Toast.makeText(context, "تم تسجيل حساب التاجر بنجاح وبدأت فترة التجربة المجانية ✨", Toast.LENGTH_LONG).show()
+                        onLoginSuccess()
+                    } else {
+                        regErrorMessage = message
+                        Toast.makeText(context, message, Toast.LENGTH_LONG).show()
+                    }
+                }
+            } else {
+                // User is in Login mode -> Login to existing merchant
+                viewModel.loginWithEmail(
+                    email = cleanEmail,
+                    merchant = displayName,
+                    store = "متجر $displayName"
+                )
+                TawthiqNotificationManager.sendReturningWelcomePushNotification(context, merchantName = displayName, merchantEmail = cleanEmail)
+                Toast.makeText(context, "أهلاً بك مجدداً في البيان يا $displayName 👋", Toast.LENGTH_SHORT).show()
+                onLoginSuccess()
             }
         }
     }
@@ -151,7 +279,6 @@ fun LoginScreen(
     fun launchGoogleLogin() {
         isAuthenticating = true
         try {
-            // Android OS Native Account Chooser: always reliable on all devices
             val intent = GoogleAuthHelper.createAccountChooserIntent()
             googleAccountPickerLauncher.launch(intent)
         } catch (e: Exception) {
@@ -162,7 +289,7 @@ fun LoginScreen(
                 }
             } catch (ex: Exception) {
                 isAuthenticating = false
-                showDirectEmailDialog = true
+                selectedAuthTab = 0
             }
         }
     }
@@ -176,7 +303,7 @@ fun LoginScreen(
                         contentAlignment = Alignment.Center
                     ) {
                         Text(
-                            text = "تسجيل الدخول",
+                            text = if (selectedAuthTab == 0) "تسجيل الدخول" else "إنشاء حساب تاجر جديد",
                             fontSize = 20.sp,
                             fontWeight = FontWeight.Bold,
                             color = MaterialTheme.colorScheme.onSurface,
@@ -199,23 +326,23 @@ fun LoginScreen(
                 .padding(horizontal = 24.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Spacer(modifier = Modifier.height(18.dp))
+            Spacer(modifier = Modifier.height(14.dp))
 
-            // 1. Central Illustration: Al-Bayan Brand Logo with beautiful glow
+            // 1. Central Brand Logo
             Surface(
                 modifier = Modifier
-                    .width(220.dp)
-                    .height(138.dp)
+                    .width(180.dp)
+                    .height(110.dp)
                     .testTag("login_bayan_logo"),
-                shape = RoundedCornerShape(24.dp),
+                shape = RoundedCornerShape(20.dp),
                 color = Color.White,
-                shadowElevation = 8.dp,
+                shadowElevation = 6.dp,
                 border = androidx.compose.foundation.BorderStroke(1.5.dp, Color(0xFF0284C7).copy(alpha = 0.25f))
             ) {
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
-                        .padding(horizontal = 16.dp, vertical = 10.dp),
+                        .padding(horizontal = 14.dp, vertical = 8.dp),
                     contentAlignment = Alignment.Center
                 ) {
                     androidx.compose.foundation.Image(
@@ -227,136 +354,564 @@ fun LoginScreen(
                 }
             }
 
-            Spacer(modifier = Modifier.height(26.dp))
+            Spacer(modifier = Modifier.height(18.dp))
 
             // 2. Main Title
             Text(
-                text = "أهلاً بك في البيان",
-                fontSize = 26.sp,
+                text = "نظام البيان المحاسبي",
+                fontSize = 24.sp,
                 fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.onSurface,
                 textAlign = TextAlign.Center
             )
 
-            Spacer(modifier = Modifier.height(8.dp))
+            Spacer(modifier = Modifier.height(4.dp))
 
             // 3. Subtitle
             Text(
-                text = "سجّل الدخول لمتابعة إدارة حساباتك بسهولة وأمان",
-                fontSize = 15.sp,
+                text = if (selectedAuthTab == 0) "سجّل الدخول إلى دفتر حسابات متجرك" else "أنشئ حساب تاجر جديد بهوية رقمية فريدة",
+                fontSize = 14.sp,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 textAlign = TextAlign.Center
             )
 
-            Spacer(modifier = Modifier.height(28.dp))
+            Spacer(modifier = Modifier.height(20.dp))
 
-            // 4. Primary Button: "متابعة باستخدام Google"
+            // 4. Primary Mode Tab Row (Login vs Register)
             Surface(
-                onClick = { launchGoogleLogin() },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(56.dp)
-                    .shadow(
-                        elevation = 2.dp,
-                        shape = RoundedCornerShape(16.dp),
-                        ambientColor = Color.Black.copy(alpha = 0.08f),
-                        spotColor = Color.Black.copy(alpha = 0.08f)
-                    )
-                    .testTag("google_login_button"),
-                shape = RoundedCornerShape(16.dp),
-                color = MaterialTheme.colorScheme.surface,
-                border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+                shape = RoundedCornerShape(14.dp),
+                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                modifier = Modifier.fillMaxWidth()
             ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(horizontal = 20.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.Center
+                TabRow(
+                    selectedTabIndex = selectedAuthTab,
+                    containerColor = Color.Transparent,
+                    contentColor = TawthiqPrimary,
+                    indicator = { tabPositions ->
+                        TabRowDefaults.SecondaryIndicator(
+                            Modifier.tabIndicatorOffset(tabPositions[selectedAuthTab]),
+                            color = TawthiqPrimary,
+                            height = 3.dp
+                        )
+                    }
                 ) {
-                    Text(
-                        text = if (isAuthenticating) "جارٍ الاتصال بـ Google..." else "متابعة باستخدام Google",
-                        fontSize = 16.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        color = MaterialTheme.colorScheme.onSurface
+                    Tab(
+                        selected = selectedAuthTab == 0,
+                        onClick = { 
+                            selectedAuthTab = 0 
+                            regErrorMessage = null
+                        },
+                        text = {
+                            Text(
+                                "تسجيل الدخول",
+                                fontWeight = if (selectedAuthTab == 0) FontWeight.Bold else FontWeight.Medium,
+                                fontSize = 15.sp
+                            )
+                        },
+                        modifier = Modifier.testTag("tab_login")
                     )
-                    Spacer(modifier = Modifier.width(12.dp))
-                    GoogleLogo(modifier = Modifier.size(24.dp))
+                    Tab(
+                        selected = selectedAuthTab == 1,
+                        onClick = { 
+                            selectedAuthTab = 1 
+                            loginErrorMessage = null
+                        },
+                        text = {
+                            Text(
+                                "حساب تاجر جديد",
+                                fontWeight = if (selectedAuthTab == 1) FontWeight.Bold else FontWeight.Medium,
+                                fontSize = 15.sp
+                            )
+                        },
+                        modifier = Modifier.testTag("tab_register")
+                    )
                 }
             }
 
-            Spacer(modifier = Modifier.height(18.dp))
+            Spacer(modifier = Modifier.height(20.dp))
 
-            // 5. Divider: "أو"
-            Text(
-                text = "أو",
-                fontSize = 14.sp,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                fontWeight = FontWeight.Medium
-            )
+            // Content based on selected tab
+            if (selectedAuthTab == 1) {
+                // ==================== TAB 1: NEW MERCHANT REGISTRATION ====================
+                // Unique Merchant Identity Info Card
+                Card(
+                    colors = CardDefaults.cardColors(
+                        containerColor = TawthiqPrimary.copy(alpha = 0.08f)
+                    ),
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(
+                        modifier = Modifier.padding(12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.VerifiedUser,
+                            contentDescription = null,
+                            tint = TawthiqPrimary,
+                            modifier = Modifier.size(22.dp)
+                        )
+                        Spacer(modifier = Modifier.width(10.dp))
+                        Column {
+                            Text(
+                                text = "الهوية الفريدة للتاجر (Unique Merchant Identity)",
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 13.sp,
+                                color = TawthiqPrimary
+                            )
+                            Text(
+                                text = "البريد الإلكتروني فريد لكل تاجر ولا يمكن تكراره مطلقاً، بينما اسم المتجر يمكن تكراره بحرية.",
+                                fontSize = 12.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                lineHeight = 16.sp
+                            )
+                        }
+                    }
+                }
 
-            Spacer(modifier = Modifier.height(18.dp))
+                Spacer(modifier = Modifier.height(14.dp))
 
-            // 6. Secondary Button: "مسح باركود الزبون / متابعة كشف الحساب عبر QR"
-            Surface(
-                onClick = onOpenQrScanner,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .testTag("qr_login_button"),
-                shape = RoundedCornerShape(16.dp),
-                color = MaterialTheme.colorScheme.surface,
-                border = androidx.compose.foundation.BorderStroke(1.2.dp, TawthiqPrimary.copy(alpha = 0.5f))
-            ) {
-                Row(
+                // Error message banner if registration failed
+                if (regErrorMessage != null) {
+                    Card(
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.9f)
+                        ),
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("registration_error_banner")
+                    ) {
+                        Column(modifier = Modifier.padding(14.dp)) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(
+                                    imageVector = Icons.Default.ErrorOutline,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.error,
+                                    modifier = Modifier.size(24.dp)
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(
+                                    text = regErrorMessage!!,
+                                    color = MaterialTheme.colorScheme.onErrorContainer,
+                                    fontSize = 13.5.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    lineHeight = 18.sp
+                                )
+                            }
+
+                            // If duplicate email, suggest switching to Login
+                            if (regErrorMessage!!.contains("مستخدم بالفعل")) {
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Button(
+                                    onClick = {
+                                        loginEmail = regEmail.trim()
+                                        selectedAuthTab = 0
+                                    },
+                                    colors = ButtonDefaults.buttonColors(
+                                        containerColor = MaterialTheme.colorScheme.error
+                                    ),
+                                    shape = RoundedCornerShape(8.dp),
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .testTag("switch_to_login_btn")
+                                ) {
+                                    Text("الانتقال لتسجيل الدخول بهذا البريد", fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                                }
+                            }
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(14.dp))
+                }
+
+                // Field 1: Email (Unique Merchant Identifier)
+                OutlinedTextField(
+                    value = regEmail,
+                    onValueChange = { 
+                        regEmail = it
+                        regErrorMessage = null
+                    },
+                    label = { Text("البريد الإلكتروني للتاجر * (هويتك الفريدة)") },
+                    placeholder = { Text("merchant@gmail.com") },
+                    leadingIcon = {
+                        Icon(Icons.Default.Email, contentDescription = null, tint = TawthiqPrimary)
+                    },
+                    singleLine = true,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 12.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.Center
+                        .testTag("register_email_input")
+                )
+
+                Spacer(modifier = Modifier.height(10.dp))
+
+                // Field 2: Merchant Name
+                OutlinedTextField(
+                    value = regMerchantName,
+                    onValueChange = { 
+                        regMerchantName = it
+                        regErrorMessage = null
+                    },
+                    label = { Text("اسم التاجر / المالك *") },
+                    placeholder = { Text("أحمد المنصور") },
+                    leadingIcon = {
+                        Icon(Icons.Default.Person, contentDescription = null)
+                    },
+                    singleLine = true,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("register_merchant_input")
+                )
+
+                Spacer(modifier = Modifier.height(10.dp))
+
+                // Field 3: Store Name (Can be non-unique)
+                OutlinedTextField(
+                    value = regStoreName,
+                    onValueChange = { regStoreName = it },
+                    label = { Text("اسم المتجر أو النشاط (اختياري)") },
+                    placeholder = { Text("متجر النور والبركة") },
+                    leadingIcon = {
+                        Icon(Icons.Default.Storefront, contentDescription = null)
+                    },
+                    singleLine = true,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("register_store_input")
+                )
+
+                Spacer(modifier = Modifier.height(10.dp))
+
+                // Field 4: Phone
+                OutlinedTextField(
+                    value = regPhone,
+                    onValueChange = { regPhone = it },
+                    label = { Text("رقم الهاتف (اختياري)") },
+                    placeholder = { Text("+966501234567") },
+                    leadingIcon = {
+                        Icon(Icons.Default.Phone, contentDescription = null)
+                    },
+                    singleLine = true,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("register_phone_input")
+                )
+
+                Spacer(modifier = Modifier.height(10.dp))
+
+                // Field 5: Password
+                OutlinedTextField(
+                    value = regPassword,
+                    onValueChange = { 
+                        regPassword = it
+                        regErrorMessage = null
+                    },
+                    label = { Text("كلمة المرور * (6 خانات على الأقل)") },
+                    leadingIcon = {
+                        Icon(Icons.Default.Lock, contentDescription = null)
+                    },
+                    trailingIcon = {
+                        IconButton(onClick = { regPasswordVisible = !regPasswordVisible }) {
+                            Icon(
+                                imageVector = if (regPasswordVisible) Icons.Default.VisibilityOff else Icons.Default.Visibility,
+                                contentDescription = if (regPasswordVisible) "إخفاء كلمة المرور" else "إظهار كلمة المرور"
+                            )
+                        }
+                    },
+                    visualTransformation = if (regPasswordVisible) VisualTransformation.None else PasswordVisualTransformation(),
+                    singleLine = true,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("register_password_input")
+                )
+
+                Spacer(modifier = Modifier.height(10.dp))
+
+                // Field 6: Confirm Password
+                OutlinedTextField(
+                    value = regConfirmPassword,
+                    onValueChange = { 
+                        regConfirmPassword = it
+                        regErrorMessage = null
+                    },
+                    label = { Text("تأكيد كلمة المرور *") },
+                    leadingIcon = {
+                        Icon(Icons.Default.Lock, contentDescription = null)
+                    },
+                    visualTransformation = if (regPasswordVisible) VisualTransformation.None else PasswordVisualTransformation(),
+                    singleLine = true,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("register_confirm_password_input")
+                )
+
+                Spacer(modifier = Modifier.height(18.dp))
+
+                // Submit Button: Register Merchant Account
+                Button(
+                    onClick = { handleRegistrationSubmit() },
+                    enabled = !isRegistering,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(52.dp)
+                        .testTag("register_submit_button"),
+                    colors = ButtonDefaults.buttonColors(containerColor = TawthiqPrimary),
+                    shape = RoundedCornerShape(14.dp)
                 ) {
-                    Icon(
-                        imageVector = Icons.Default.QrCodeScanner,
-                        contentDescription = "QR",
-                        tint = TawthiqPrimary,
-                        modifier = Modifier.size(24.dp)
-                    )
+                    if (isRegistering) {
+                        CircularProgressIndicator(
+                            color = Color.White,
+                            strokeWidth = 2.5.dp,
+                            modifier = Modifier.size(24.dp)
+                        )
+                        Spacer(modifier = Modifier.width(10.dp))
+                        Text("جارٍ التحقق الذري وإنشاء الحساب...", fontSize = 15.sp, fontWeight = FontWeight.Bold)
+                    } else {
+                        Icon(Icons.Default.PersonAdd, contentDescription = null)
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("إنشاء حساب تاجر جديد", fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(14.dp))
+
+                // Fast Google Sign up
+                OutlinedButton(
+                    onClick = { launchGoogleLogin() },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(50.dp)
+                        .testTag("google_register_button"),
+                    shape = RoundedCornerShape(14.dp)
+                ) {
+                    GoogleLogo(modifier = Modifier.size(20.dp))
                     Spacer(modifier = Modifier.width(10.dp))
-                    Column(horizontalAlignment = Alignment.Start) {
+                    Text("التسجيل السريع عبر Google", fontWeight = FontWeight.SemiBold, fontSize = 14.5.sp)
+                }
+
+            } else {
+                // ==================== TAB 0: EXISTING MERCHANT LOGIN ====================
+                // Error banner if login failed
+                if (loginErrorMessage != null) {
+                    Card(
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.9f)
+                        ),
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("login_error_banner")
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(14.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.ErrorOutline,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.error,
+                                modifier = Modifier.size(24.dp)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = loginErrorMessage!!,
+                                color = MaterialTheme.colorScheme.onErrorContainer,
+                                fontSize = 13.5.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(14.dp))
+                }
+
+                // Field 1: Email or Username
+                OutlinedTextField(
+                    value = loginEmail,
+                    onValueChange = { 
+                        loginEmail = it
+                        loginErrorMessage = null
+                    },
+                    label = { Text("البريد الإلكتروني للتاجر أو اسم المستخدم") },
+                    placeholder = { Text("name@gmail.com أو menesy") },
+                    leadingIcon = {
+                        Icon(Icons.Default.Email, contentDescription = null, tint = TawthiqPrimary)
+                    },
+                    singleLine = true,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("login_email_input")
+                )
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                // Field 2: Password
+                OutlinedTextField(
+                    value = loginPassword,
+                    onValueChange = { 
+                        loginPassword = it
+                        loginErrorMessage = null
+                    },
+                    label = { Text("كلمة المرور") },
+                    leadingIcon = {
+                        Icon(Icons.Default.Lock, contentDescription = null)
+                    },
+                    trailingIcon = {
+                        IconButton(onClick = { loginPasswordVisible = !loginPasswordVisible }) {
+                            Icon(
+                                imageVector = if (loginPasswordVisible) Icons.Default.VisibilityOff else Icons.Default.Visibility,
+                                contentDescription = if (loginPasswordVisible) "إخفاء كلمة المرور" else "إظهار كلمة المرور"
+                            )
+                        }
+                    },
+                    visualTransformation = if (loginPasswordVisible) VisualTransformation.None else PasswordVisualTransformation(),
+                    singleLine = true,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("login_password_input")
+                )
+
+                // Forgot password button
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End
+                ) {
+                    TextButton(
+                        onClick = { 
+                            recoveryEmail = loginEmail.trim()
+                            recoveryErrorMessage = null
+                            showPasswordRecoveryDialog = true 
+                        },
+                        modifier = Modifier.testTag("forgot_password_btn")
+                    ) {
                         Text(
-                            text = "مسح باركود الزبون / متابعة الحساب (QR)",
-                            fontSize = 14.5.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = TawthiqPrimary
+                            "نسيت كلمة المرور؟",
+                            color = TawthiqPrimary,
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.SemiBold
                         )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                // Submit Login Button
+                Button(
+                    onClick = { handleLoginSubmit() },
+                    enabled = !isLoggingIn,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(52.dp)
+                        .testTag("login_submit_button"),
+                    colors = ButtonDefaults.buttonColors(containerColor = TawthiqPrimary),
+                    shape = RoundedCornerShape(14.dp)
+                ) {
+                    if (isLoggingIn) {
+                        CircularProgressIndicator(
+                            color = Color.White,
+                            strokeWidth = 2.5.dp,
+                            modifier = Modifier.size(24.dp)
+                        )
+                        Spacer(modifier = Modifier.width(10.dp))
+                        Text("جارٍ تسجيل الدخول...", fontSize = 15.sp, fontWeight = FontWeight.Bold)
+                    } else {
+                        Icon(Icons.AutoMirrored.Filled.Login, contentDescription = null)
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("تسجيل الدخول", fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(18.dp))
+
+                // Divider: "أو"
+                Text(
+                    text = "أو",
+                    fontSize = 14.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    fontWeight = FontWeight.Medium
+                )
+
+                Spacer(modifier = Modifier.height(18.dp))
+
+                // Primary Google Login Button
+                Surface(
+                    onClick = { launchGoogleLogin() },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(54.dp)
+                        .shadow(
+                            elevation = 2.dp,
+                            shape = RoundedCornerShape(16.dp),
+                            ambientColor = Color.Black.copy(alpha = 0.08f),
+                            spotColor = Color.Black.copy(alpha = 0.08f)
+                        )
+                        .testTag("google_login_button"),
+                    shape = RoundedCornerShape(16.dp),
+                    color = MaterialTheme.colorScheme.surface,
+                    border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(horizontal = 20.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.Center
+                    ) {
                         Text(
-                            text = "للزبائن: اضغط هنا لتصوير باركود التاجر ومتابعة معاملاتك فوراً",
-                            fontSize = 11.5.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                            text = if (isAuthenticating) "جارٍ الاتصال بـ Google..." else "متابعة باستخدام Google",
+                            fontSize = 15.5.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.onSurface
                         )
+                        Spacer(modifier = Modifier.width(12.dp))
+                        GoogleLogo(modifier = Modifier.size(24.dp))
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(14.dp))
+
+                // Secondary Button: "مسح باركود الزبون / متابعة كشف الحساب عبر QR"
+                Surface(
+                    onClick = onOpenQrScanner,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("qr_login_button"),
+                    shape = RoundedCornerShape(16.dp),
+                    color = MaterialTheme.colorScheme.surface,
+                    border = androidx.compose.foundation.BorderStroke(1.2.dp, TawthiqPrimary.copy(alpha = 0.5f))
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.QrCodeScanner,
+                            contentDescription = "QR",
+                            tint = TawthiqPrimary,
+                            modifier = Modifier.size(24.dp)
+                        )
+                        Spacer(modifier = Modifier.width(10.dp))
+                        Column(horizontalAlignment = Alignment.Start) {
+                            Text(
+                                text = "مسح باركود الزبون / متابعة الحساب (QR)",
+                                fontSize = 14.5.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = TawthiqPrimary
+                            )
+                            Text(
+                                text = "للزبائن: اضغط هنا لتصوير باركود التاجر ومتابعة معاملاتك فوراً",
+                                fontSize = 11.5.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
                     }
                 }
             }
 
-            Spacer(modifier = Modifier.height(14.dp))
+            Spacer(modifier = Modifier.height(24.dp))
 
-            // 6b. Email / Username quick entry link
-            TextButton(
-                onClick = { showDirectEmailDialog = true },
-                modifier = Modifier.testTag("direct_email_login_btn")
-            ) {
-                Icon(Icons.Default.Email, contentDescription = null, tint = TawthiqPrimary, modifier = Modifier.size(18.dp))
-                Spacer(modifier = Modifier.width(6.dp))
-                Text(
-                    text = "تسجيل الدخول باسم المستخدم أو البريد الإلكتروني",
-                    color = TawthiqPrimary,
-                    fontSize = 13.sp,
-                    fontWeight = FontWeight.SemiBold
-                )
-            }
-
-            Spacer(modifier = Modifier.height(16.dp))
-
-            // 7. Pills Row: "كيف اسجل الدخول؟" & "الفيديو التعريفي"
+            // Pills Row: "كيف اسجل الدخول؟" & "الفيديو التعريفي"
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(12.dp)
@@ -399,15 +954,15 @@ fun LoginScreen(
                 )
             }
 
-            Spacer(modifier = Modifier.height(36.dp))
+            Spacer(modifier = Modifier.height(28.dp))
 
-            // 8. Footer: Security Badge
+            // Footer: Security Badge
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.Center
             ) {
                 Text(
-                    text = "بياناتك محفوظة بأمان عبر التخزين السحابي",
+                    text = "بياناتك محفوظة ومحمية بأمان عبر السحابة",
                     fontSize = 13.sp,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     fontWeight = FontWeight.Medium
@@ -423,7 +978,7 @@ fun LoginScreen(
 
             Spacer(modifier = Modifier.height(8.dp))
 
-            // 9. Footer Terms & Privacy
+            // Footer Terms & Privacy
             Text(
                 text = "عند المتابعة، أنت موافق على",
                 fontSize = 12.sp,
@@ -445,44 +1000,68 @@ fun LoginScreen(
         }
     }
 
-    // Direct Email Login Dialog
-    if (showDirectEmailDialog) {
-        var directEmail by remember { mutableStateOf("") }
-        var directName by remember { mutableStateOf("") }
-        var emailError by remember { mutableStateOf<String?>(null) }
-
+    // ==================== PASSWORD RECOVERY DIALOG ====================
+    if (showPasswordRecoveryDialog) {
         AlertDialog(
-            onDismissRequest = { showDirectEmailDialog = false },
+            onDismissRequest = { 
+                if (!isRecovering) showPasswordRecoveryDialog = false 
+            },
             title = {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Default.AccountCircle, contentDescription = null, tint = TawthiqPrimary)
+                    Icon(Icons.Default.Key, contentDescription = null, tint = TawthiqPrimary)
                     Spacer(modifier = Modifier.width(8.dp))
-                    Text("الدخول باسم المستخدم أو البريد", fontWeight = FontWeight.Bold)
+                    Text("استعادة كلمة مرور التاجر", fontWeight = FontWeight.Bold, fontSize = 17.sp)
                 }
             },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Text("أدخل اسم المستخدم (مثال: menesy) أو البريد الإلكتروني لإدارة حساباتك المالية:")
+                    Text(
+                        text = "أدخل بريدك الإلكتروني المسجل وكلمة المرور الجديدة لاستعادة حسابك:",
+                        fontSize = 13.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+
+                    if (recoveryErrorMessage != null) {
+                        Text(
+                            text = recoveryErrorMessage!!,
+                            color = MaterialTheme.colorScheme.error,
+                            fontSize = 12.5.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+
                     OutlinedTextField(
-                        value = directEmail,
+                        value = recoveryEmail,
                         onValueChange = { 
-                            directEmail = it
-                            emailError = null
+                            recoveryEmail = it
+                            recoveryErrorMessage = null
                         },
-                        label = { Text("اسم المستخدم أو البريد (مثال: menesy أو name@gmail.com)") },
-                        isError = emailError != null,
-                        supportingText = {
-                            if (emailError != null) {
-                                Text(emailError!!, color = MaterialTheme.colorScheme.error)
-                            }
-                        },
+                        label = { Text("البريد الإلكتروني المسجل") },
+                        placeholder = { Text("merchant@gmail.com") },
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth()
                     )
+
                     OutlinedTextField(
-                        value = directName,
-                        onValueChange = { directName = it },
-                        label = { Text("اسم التاجر / المتجر (اختياري)") },
+                        value = recoveryNewPassword,
+                        onValueChange = { 
+                            recoveryNewPassword = it
+                            recoveryErrorMessage = null
+                        },
+                        label = { Text("كلمة المرور الجديدة (6 خانات على الأقل)") },
+                        visualTransformation = PasswordVisualTransformation(),
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+
+                    OutlinedTextField(
+                        value = recoveryConfirmPassword,
+                        onValueChange = { 
+                            recoveryConfirmPassword = it
+                            recoveryErrorMessage = null
+                        },
+                        label = { Text("تأكيد كلمة المرور الجديدة") },
+                        visualTransformation = PasswordVisualTransformation(),
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth()
                     )
@@ -491,30 +1070,58 @@ fun LoginScreen(
             confirmButton = {
                 Button(
                     onClick = {
-                        val trimmed = directEmail.trim().lowercase()
-                        if (trimmed.isBlank()) {
-                            emailError = "يرجى كتابة اسم المستخدم أو البريد الإلكتروني"
+                        val clean = MerchantAuthService.normalizeEmail(recoveryEmail)
+                        if (!MerchantAuthService.isValidEmail(clean)) {
+                            recoveryErrorMessage = MerchantAuthService.ERR_INVALID_EMAIL
                             return@Button
                         }
-                        val effectiveEmail = if (trimmed.contains("@")) trimmed else "$trimmed@tawthiq.app"
-                        val name = if (directName.isNotBlank()) directName.trim() else trimmed.substringBefore("@")
-                        viewModel.loginWithEmail(
-                            email = effectiveEmail,
-                            merchant = name,
-                            store = if (directName.isNotBlank()) "متجر ${directName.trim()}" else "متجر $name"
-                        )
-                        TawthiqNotificationManager.sendWelcomePushNotification(context, force = true, merchantEmail = effectiveEmail)
-                        showDirectEmailDialog = false
-                        Toast.makeText(context, "تم تسجيل الدخول بنجاح ✓", Toast.LENGTH_SHORT).show()
-                        onLoginSuccess()
+                        if (recoveryNewPassword.length < 6) {
+                            recoveryErrorMessage = "يجب أن تتكون كلمة المرور من 6 أحرف على الأقل"
+                            return@Button
+                        }
+                        if (recoveryNewPassword != recoveryConfirmPassword) {
+                            recoveryErrorMessage = "كلمة المرور وتأكيد كلمة المرور غير متطابقتين"
+                            return@Button
+                        }
+
+                        isRecovering = true
+                        recoveryErrorMessage = null
+
+                        viewModel.recoverMerchantPassword(clean, recoveryNewPassword) { success, msg ->
+                            isRecovering = false
+                            if (success) {
+                                Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
+                                showPasswordRecoveryDialog = false
+                                loginEmail = clean
+                                loginPassword = recoveryNewPassword
+                                selectedAuthTab = 0
+                            } else {
+                                recoveryErrorMessage = msg
+                            }
+                        }
                     },
-                    colors = ButtonDefaults.buttonColors(containerColor = TawthiqPrimary)
+                    enabled = !isRecovering,
+                    colors = ButtonDefaults.buttonColors(containerColor = TawthiqPrimary),
+                    shape = RoundedCornerShape(8.dp)
                 ) {
-                    Text("تسجيل الدخول")
+                    if (isRecovering) {
+                        CircularProgressIndicator(
+                            color = Color.White,
+                            strokeWidth = 2.dp,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("جارٍ التحديث...")
+                    } else {
+                        Text("تحديث واستعادة كلمة المرور", fontWeight = FontWeight.Bold)
+                    }
                 }
             },
             dismissButton = {
-                TextButton(onClick = { showDirectEmailDialog = false }) {
+                OutlinedButton(
+                    onClick = { showPasswordRecoveryDialog = false },
+                    shape = RoundedCornerShape(8.dp)
+                ) {
                     Text("إلغاء")
                 }
             }

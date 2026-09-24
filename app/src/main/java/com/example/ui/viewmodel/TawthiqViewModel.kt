@@ -703,7 +703,7 @@ class TawthiqViewModel(application: Application) : AndroidViewModel(application)
     }
 
     /**
-     * Requirement: Admin adds a new user directly
+     * Requirement: Admin adds a new user directly with Strict Unique Email validation
      */
     fun createAdminUser(
         emailOrUsername: String,
@@ -712,10 +712,20 @@ class TawthiqViewModel(application: Application) : AndroidViewModel(application)
         phone: String,
         password: String = "123456",
         status: String = "ACTIVE",
-        plan: String = "مجاني"
+        plan: String = "مجاني",
+        onResult: (Boolean, String) -> Unit = { _, _ -> }
     ) {
-        val clean = emailOrUsername.trim().lowercase()
+        val clean = com.example.util.MerchantAuthService.normalizeEmail(emailOrUsername)
         val effectiveEmail = if (clean.contains("@")) clean else "$clean@tawthiq.app"
+        
+        // Strict uniqueness check on current in-memory admin list
+        val currentList = _adminUserAccounts.value
+        val existsLocally = currentList.any { it.email.equals(effectiveEmail, ignoreCase = true) }
+        if (existsLocally) {
+            onResult(false, com.example.util.MerchantAuthService.ERR_DUPLICATE_EMAIL)
+            return
+        }
+
         val cleanId = effectiveEmail.replace(".", "_").replace("@", "_")
         val cleanUser = clean.substringBefore("@")
         val derivedMerchant = merchantName.ifBlank { cleanUser }
@@ -738,47 +748,84 @@ class TawthiqViewModel(application: Application) : AndroidViewModel(application)
             notes = "تم إنشاء الحساب بواسطة الإدارة"
         )
 
-        val currentList = _adminUserAccounts.value
-        val updated = listOf(newUser) + currentList.filterNot { 
-            it.email.equals(effectiveEmail, ignoreCase = true) || it.email.substringBefore("@").equals(cleanUser, ignoreCase = true) 
-        }
-        _adminUserAccounts.value = updated
-        saveAdminUsersInternal(updated)
-
         viewModelScope.launch(Dispatchers.IO) {
             try {
                 val db = FirebaseFirestore.getInstance()
-                val docData = hashMapOf<String, Any>(
-                    "id" to newUser.id,
-                    "email" to effectiveEmail,
-                    "username" to cleanUser,
-                    "storeName" to derivedStore,
-                    "merchantName" to derivedMerchant,
-                    "phone" to phone,
-                    "password" to newUser.password,
-                    "status" to status,
-                    "plan" to plan,
-                    "registeredAt" to newUser.registeredAt,
-                    "subscriptionStart" to newUser.subscriptionStart,
-                    "subscriptionExpiry" to newUser.subscriptionExpiry,
-                    "lastActive" to System.currentTimeMillis(),
-                    "notes" to newUser.notes
-                )
-                db.collection("system_admin_users").document(cleanId).set(docData, SetOptions.merge())
-                db.collection("system_admin_users").document(effectiveEmail).set(docData, SetOptions.merge())
-                db.collection("system_admin_users").document(cleanUser).set(docData, SetOptions.merge())
-                db.collection("user_profiles").document(cleanId).set(docData, SetOptions.merge())
-                db.collection("user_profiles").document(cleanUser).set(docData, SetOptions.merge())
-                db.collection("account_status_updates").document(cleanId).set(hashMapOf("status" to status), SetOptions.merge())
-                db.collection("account_status_updates").document(cleanUser).set(hashMapOf("status" to status), SetOptions.merge())
+                val emailDocId = com.example.util.MerchantAuthService.emailToDocId(effectiveEmail)
+                val uniqueEmailRef = db.collection("merchant_unique_emails").document(emailDocId)
+                val userDocRef = db.collection("system_admin_users").document(cleanId)
+
+                // Atomic transaction to enforce server-side uniqueness
+                val txTask = db.runTransaction { tx ->
+                    val emailSnap = tx.get(uniqueEmailRef)
+                    val userSnap = tx.get(userDocRef)
+
+                    if (emailSnap.exists()) {
+                        val snapStatus = emailSnap.getString("status") ?: "ACTIVE"
+                        if (snapStatus.equals("DELETED", ignoreCase = true)) {
+                            throw IllegalStateException(com.example.util.MerchantAuthService.ERR_DELETED_ACCOUNT)
+                        }
+                        throw IllegalArgumentException(com.example.util.MerchantAuthService.ERR_DUPLICATE_EMAIL)
+                    }
+                    if (userSnap.exists()) {
+                        throw IllegalArgumentException(com.example.util.MerchantAuthService.ERR_DUPLICATE_EMAIL)
+                    }
+
+                    val regData = hashMapOf<String, Any>(
+                        "email" to effectiveEmail,
+                        "merchantId" to newUser.id,
+                        "storeName" to derivedStore,
+                        "merchantName" to derivedMerchant,
+                        "phone" to phone,
+                        "registeredAt" to newUser.registeredAt,
+                        "status" to status
+                    )
+                    tx.set(uniqueEmailRef, regData)
+
+                    val docData = hashMapOf<String, Any>(
+                        "id" to newUser.id,
+                        "email" to effectiveEmail,
+                        "username" to cleanUser,
+                        "storeName" to derivedStore,
+                        "merchantName" to derivedMerchant,
+                        "phone" to phone,
+                        "password" to newUser.password,
+                        "status" to status,
+                        "plan" to plan,
+                        "registeredAt" to newUser.registeredAt,
+                        "subscriptionStart" to newUser.subscriptionStart,
+                        "subscriptionExpiry" to newUser.subscriptionExpiry,
+                        "lastActive" to System.currentTimeMillis(),
+                        "notes" to newUser.notes
+                    )
+                    tx.set(userDocRef, docData)
+                }
+                Tasks.await(txTask)
+
+                withContext(Dispatchers.Main) {
+                    val updated = listOf(newUser) + currentList
+                    _adminUserAccounts.value = updated
+                    saveAdminUsersInternal(updated)
+                    onResult(true, "تم إنشاء الحساب بنجاح ✓")
+                }
             } catch (e: Exception) {
-                e.printStackTrace()
+                withContext(Dispatchers.Main) {
+                    val msg = when {
+                        e is IllegalArgumentException || e.message?.contains("duplicate", true) == true -> 
+                            com.example.util.MerchantAuthService.ERR_DUPLICATE_EMAIL
+                        e is IllegalStateException -> 
+                            com.example.util.MerchantAuthService.ERR_DELETED_ACCOUNT
+                        else -> 
+                            e.localizedMessage ?: "حدث خطأ أثناء إضافة الحساب"
+                    }
+                    onResult(false, msg)
+                }
             }
         }
     }
 
     fun deleteAdminUser(userEmail: String) {
-        val clean = userEmail.trim().lowercase()
+        val clean = com.example.util.MerchantAuthService.normalizeEmail(userEmail)
         val cleanId = clean.replace(".", "_").replace("@", "_")
         val currentList = _adminUserAccounts.value
         val updated = currentList.filterNot { it.email.equals(clean, ignoreCase = true) }
@@ -786,6 +833,8 @@ class TawthiqViewModel(application: Application) : AndroidViewModel(application)
         saveAdminUsersInternal(updated)
         viewModelScope.launch(Dispatchers.IO) {
             try {
+                // Mark deleted in unique registry so it cannot be accidentally recreated
+                com.example.util.MerchantAuthService.markAccountDeleted(clean)
                 val db = FirebaseFirestore.getInstance()
                 db.collection("system_admin_users").document(cleanId).delete()
                 db.collection("system_admin_users").document(clean).delete()
@@ -2459,6 +2508,127 @@ class TawthiqViewModel(application: Application) : AndroidViewModel(application)
             updateStoreProfile(derivedStore, derivedMerchant, derivedPhone, "USD")
         }
         syncAllUserAccountsAndTransactionsToCloud()
+    }
+
+    /**
+     * Requirement: Strict Unique Merchant Registration
+     * Atomically registers a merchant using normalized email.
+     * Rejects with ERR_DUPLICATE_EMAIL if email is already taken.
+     */
+    fun registerMerchant(
+        email: String,
+        merchantName: String,
+        storeName: String,
+        phone: String,
+        password: String,
+        onResult: (Boolean, String) -> Unit
+    ) {
+        val cleanEmail = com.example.util.MerchantAuthService.normalizeEmail(email)
+        if (!com.example.util.MerchantAuthService.isValidEmail(cleanEmail)) {
+            onResult(false, com.example.util.MerchantAuthService.ERR_INVALID_EMAIL)
+            return
+        }
+
+        // Quick local check across known admin accounts
+        val currentUsers = _adminUserAccounts.value
+        if (currentUsers.any { it.email.equals(cleanEmail, ignoreCase = true) }) {
+            onResult(false, com.example.util.MerchantAuthService.ERR_DUPLICATE_EMAIL)
+            return
+        }
+
+        viewModelScope.launch(Dispatchers.IO) {
+            val result = com.example.util.MerchantAuthService.registerMerchantAtomic(
+                rawEmail = cleanEmail,
+                merchantName = merchantName,
+                storeName = storeName,
+                phone = phone,
+                password = password
+            )
+
+            withContext(Dispatchers.Main) {
+                when (result) {
+                    is com.example.util.MerchantAuthService.AuthResult.Success -> {
+                        val user = result.user
+                        val updated = _adminUserAccounts.value + user
+                        _adminUserAccounts.value = updated
+                        saveAdminUsersInternal(updated)
+
+                        loginWithEmail(
+                            email = user.email,
+                            merchant = user.merchantName,
+                            store = user.storeName,
+                            phone = user.phone,
+                            password = user.password
+                        )
+                        onResult(true, "تم إنشاء حساب التاجر بنجاح ✓")
+                    }
+                    is com.example.util.MerchantAuthService.AuthResult.Error -> {
+                        onResult(false, result.message)
+                    }
+                }
+            }
+        }
+    }
+
+    /**
+     * Requirement: Strict Unique Merchant Login Check
+     */
+    fun verifyAndLoginMerchant(
+        email: String,
+        password: String,
+        onResult: (Boolean, String) -> Unit
+    ) {
+        val cleanEmail = com.example.util.MerchantAuthService.normalizeEmail(email)
+        if (cleanEmail.isBlank()) {
+            onResult(false, "يرجى إدخال البريد الإلكتروني")
+            return
+        }
+
+        viewModelScope.launch(Dispatchers.IO) {
+            val result = com.example.util.MerchantAuthService.verifyMerchantLogin(cleanEmail, password)
+            withContext(Dispatchers.Main) {
+                when (result) {
+                    is com.example.util.MerchantAuthService.AuthResult.Success -> {
+                        val user = result.user
+                        loginWithEmail(
+                            email = user.email,
+                            merchant = user.merchantName,
+                            store = user.storeName,
+                            phone = user.phone,
+                            password = user.password
+                        )
+                        onResult(true, "تم تسجيل الدخول بنجاح ✓")
+                    }
+                    is com.example.util.MerchantAuthService.AuthResult.Error -> {
+                        onResult(false, result.message)
+                    }
+                }
+            }
+        }
+    }
+
+    /**
+     * Requirement: Password Recovery for Unique Merchant Email
+     */
+    fun recoverMerchantPassword(
+        email: String,
+        newPassword: String,
+        onResult: (Boolean, String) -> Unit
+    ) {
+        val cleanEmail = com.example.util.MerchantAuthService.normalizeEmail(email)
+        viewModelScope.launch(Dispatchers.IO) {
+            val result = com.example.util.MerchantAuthService.recoverMerchantPassword(cleanEmail, newPassword)
+            withContext(Dispatchers.Main) {
+                when (result) {
+                    is com.example.util.MerchantAuthService.AuthResult.Success -> {
+                        onResult(true, "تم تحديث كلمة المرور لحسابك بنجاح! يمكنك الآن تسجيل الدخول.")
+                    }
+                    is com.example.util.MerchantAuthService.AuthResult.Error -> {
+                        onResult(false, result.message)
+                    }
+                }
+            }
+        }
     }
 
     fun loginAsStaff(

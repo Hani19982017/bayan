@@ -881,11 +881,16 @@ fun AddAdminUserDialog(
                             storeName = finalStore,
                             phone = phone.trim(),
                             password = password.ifBlank { "123456" },
-                            status = "ACTIVE",
+                            status = "نشط",
                             plan = plan
-                        )
-                        Toast.makeText(context, "تمت إضافة المستخدم ($finalName) بنجاح ✓", Toast.LENGTH_SHORT).show()
-                        onDismiss()
+                        ) { success, message ->
+                            if (success) {
+                                Toast.makeText(context, "تمت إضافة المستخدم ($finalName) بنجاح ✓", Toast.LENGTH_SHORT).show()
+                                onDismiss()
+                            } else {
+                                Toast.makeText(context, message, Toast.LENGTH_LONG).show()
+                            }
+                        }
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = TawthiqPrimary),
                     shape = RoundedCornerShape(8.dp)
