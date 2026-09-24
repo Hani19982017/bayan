@@ -1,0 +1,48 @@
+{
+  "project_info": {
+    "project_number": "1036837124854",
+    "project_id": "tactile-oxygen-453103-r3",
+    "storage_bucket": "tactile-oxygen-453103-r3.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1036837124854:android:c8389e7f4df6e7cd164ad7",
+        "android_client_info": {
+          "package_name": "com.aistudio.tawthiq.admin"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCwfQmJcXl90vfrFokHKmQPjpWF97DdT_k"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1036837124854:android:8f00005b7c9d75da164ad7",
+        "android_client_info": {
+          "package_name": "com.aistudio.tawthiq.kfyrt"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCwfQmJcXl90vfrFokHKmQPjpWF97DdT_k"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
