@@ -1,5 +1,4 @@
 package com.example.ui.viewmodel
-
 import android.app.Application
 import android.content.Context
 import androidx.lifecycle.AndroidViewModel
@@ -7,29 +6,34 @@ import androidx.lifecycle.viewModelScope
 import com.example.data.local.AppDatabase
 import com.example.data.model.AccountEntity
 import com.example.data.model.AccountWithBalance
+import com.example.data.model.AdminUserAccount
 import com.example.data.model.AppPermissions
 import com.example.data.model.CurrencyBalance
 import com.example.data.model.DueItem
 import com.example.data.model.OverallSummary
+import com.example.data.model.OverdueAccountItem
+import com.example.data.model.PaymentMethodConfig
+import com.example.data.model.PlanPricing
 import com.example.data.model.StaffSession
 import com.example.data.model.StaffUser
 import com.example.data.model.SubscriptionInfo
-import com.example.data.model.SupportTicket
-import com.example.data.model.TransactionEntity
-import com.example.data.model.TopPurchaserItem
-import com.example.data.model.OverdueAccountItem
-import com.example.data.model.AdminUserAccount
-import com.example.data.model.PaymentMethodConfig
 import com.example.data.model.SubscriptionPaymentRequest
+import com.example.data.model.SupportTicket
 import com.example.data.model.SystemBroadcastMessage
-import com.example.data.model.PlanPricing
+import com.example.data.model.TopPurchaserItem
+import com.example.data.model.TransactionEntity
 import com.example.data.repository.TawthiqRepository
 import com.example.ui.theme.AppThemeMode
+import com.example.util.ExcelExportHelper
 import com.example.util.TawthiqNotificationManager
+import com.google.android.gms.tasks.Task
+import com.google.android.gms.tasks.Tasks
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.SetOptions
-import org.json.JSONArray
-import org.json.JSONObject
+import com.google.firebase.firestore.ListenerRegistration
+import kotlin.coroutines.resume
+import kotlin.coroutines.resumeWithException
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -42,11 +46,26 @@ import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
-import kotlinx.coroutines.Dispatchers
-import com.google.android.gms.tasks.Tasks
-import com.example.util.ExcelExportHelper
+import org.json.JSONArray
+import org.json.JSONObject
+
+
+
+suspend fun <T> Task<T>.awaitTask(): T = suspendCancellableCoroutine { cont ->
+    addOnSuccessListener { result ->
+        if (cont.isActive) cont.resume(result)
+    }
+    addOnFailureListener { exception ->
+        if (cont.isActive) cont.resumeWithException(exception)
+    }
+    addOnCanceledListener {
+        if (cont.isActive) cont.cancel()
+    }
+}
+
 
 class TawthiqViewModel(application: Application) : AndroidViewModel(application) {
 
@@ -79,7 +98,7 @@ class TawthiqViewModel(application: Application) : AndroidViewModel(application)
     }
 
     // Clean install check: reset any lingering test sessions on new version
-    private val isFreshInstallSession = !prefs.getBoolean("auth_v2_initialized", false)
+    private val isFreshInstallSession = !prefs.getBoolean("auth_v2_initialized", false) && prefs.getString("user_email", "").isNullOrBlank()
 
     // Authentication state
     private val _isLoggedIn = MutableStateFlow(if (isFreshInstallSession) false else prefs.getBoolean("is_logged_in", false))
@@ -677,17 +696,43 @@ class TawthiqViewModel(application: Application) : AndroidViewModel(application)
         onResult: (List<Pair<AccountEntity, List<TransactionEntity>>>) -> Unit
     ) {
         viewModelScope.launch(Dispatchers.IO) {
-            val result = mutableListOf<Pair<AccountEntity, List<TransactionEntity>>>()
             val cleanEmail = userEmail.trim().lowercase()
             val cleanEmailKey = cleanEmail.replace(".", "_").replace("@", "_")
 
+            // 1. FIRST: Query Local Room DB and return IMMEDIATELY on Main thread (< 10ms)
+            val resultList = mutableListOf<Pair<AccountEntity, List<TransactionEntity>>>()
             try {
-                withTimeout(4500L) {
+                val localAccounts = repository.getAccountsForUserSnapshot(cleanEmail)
+                val allAccounts = repository.getAllAccountsSnapshot()
+                val targetAccounts = when {
+                    localAccounts.isNotEmpty() -> localAccounts
+                    cleanEmail.equals(_userEmail.value.trim().lowercase(), ignoreCase = true) -> allAccounts
+                    else -> allAccounts.filter { 
+                        it.userEmail.equals(cleanEmail, ignoreCase = true) || cleanEmail.contains(it.userEmail) || it.userEmail.isBlank()
+                    }.ifEmpty { allAccounts }
+                }
+
+                for (acc in targetAccounts) {
+                    val txs = repository.getTransactionsSnapshotForAccount(acc.id)
+                    resultList.add(Pair(acc, txs))
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+
+            // Immediately notify UI on Main thread so user NEVER sees a spinning dialog!
+            withContext(Dispatchers.Main) {
+                onResult(resultList.toList())
+            }
+
+            // 2. SECOND: Non-blocking fetch from Firestore live_statements and root transactions
+            try {
+                kotlinx.coroutines.withTimeoutOrNull(2500L) {
                     val db = FirebaseFirestore.getInstance()
 
-                    // 1. Query Firestore live_statements for this merchant
+                    // live_statements
                     try {
-                        val snapshot = Tasks.await(db.collection("live_statements").get())
+                        val snapshot = db.collection("live_statements").get().awaitTask()
                         for (doc in snapshot.documents) {
                             val mEmail = doc.getString("merchantEmail")?.trim()?.lowercase()
                                 ?: doc.getString("userEmail")?.trim()?.lowercase() ?: ""
@@ -708,10 +753,8 @@ class TawthiqViewModel(application: Application) : AndroidViewModel(application)
                                 val txList = mutableListOf<TransactionEntity>()
 
                                 try {
-                                    val subSnap = Tasks.await(
-                                        db.collection("live_statements").document(syncKey)
-                                            .collection("transactions").get()
-                                    )
+                                    val subSnap = db.collection("live_statements").document(syncKey)
+                                        .collection("transactions").get().awaitTask()
                                     for (txDoc in subSnap.documents) {
                                         txList.add(
                                             TransactionEntity(
@@ -743,16 +786,22 @@ class TawthiqViewModel(application: Application) : AndroidViewModel(application)
                                     notes = "متجر: $storeName",
                                     syncKey = syncKey
                                 )
-                                result.add(Pair(virtualAccount, txList.sortedByDescending { it.date }))
+                                val idx = resultList.indexOfFirst { it.first.name.equals(accName, ignoreCase = true) }
+                                if (idx >= 0) {
+                                    val merged = (resultList[idx].second + txList).distinctBy { it.id }
+                                    resultList[idx] = Pair(resultList[idx].first, merged.sortedByDescending { it.date })
+                                } else {
+                                    resultList.add(Pair(virtualAccount, txList.sortedByDescending { it.date }))
+                                }
                             }
                         }
                     } catch (e: Exception) {
                         e.printStackTrace()
                     }
 
-                    // 2. Query Firestore root transactions for transactions of this merchant
+                    // Root transactions
                     try {
-                        val rootSnap = Tasks.await(db.collection("transactions").get())
+                        val rootSnap = db.collection("transactions").get().awaitTask()
                         for (doc in rootSnap.documents) {
                             val uEmail = doc.getString("userEmail")?.trim()?.lowercase() ?: ""
                             val syncKey = doc.getString("syncKey") ?: ""
@@ -775,12 +824,12 @@ class TawthiqViewModel(application: Application) : AndroidViewModel(application)
                                     isSettled = doc.getBoolean("isSettled") ?: false
                                 )
 
-                                val existingPair = result.find { it.first.name.equals(accName, ignoreCase = true) }
+                                val existingPair = resultList.find { it.first.name.equals(accName, ignoreCase = true) }
                                 if (existingPair != null) {
                                     if (existingPair.second.none { it.id == tx.id || (it.date == tx.date && it.amount == tx.amount) }) {
-                                        val updatedList = existingPair.second + tx
-                                        val idx = result.indexOf(existingPair)
-                                        result[idx] = Pair(existingPair.first, updatedList.sortedByDescending { it.date })
+                                        val updatedList = (existingPair.second + tx).sortedByDescending { it.date }
+                                        val idx = resultList.indexOf(existingPair)
+                                        resultList[idx] = Pair(existingPair.first, updatedList)
                                     }
                                 } else {
                                     val newAcc = AccountEntity(
@@ -793,7 +842,7 @@ class TawthiqViewModel(application: Application) : AndroidViewModel(application)
                                         notes = "سجل سحابي",
                                         syncKey = syncKey
                                     )
-                                    result.add(Pair(newAcc, listOf(tx)))
+                                    resultList.add(Pair(newAcc, listOf(tx)))
                                 }
                             }
                         }
@@ -801,41 +850,14 @@ class TawthiqViewModel(application: Application) : AndroidViewModel(application)
                         e.printStackTrace()
                     }
                 }
-            } catch (e: Exception) {
-                // Timeout or network error
-                e.printStackTrace()
-            }
 
-            // 3. Query Local Room DB
-            try {
-                val localAccounts = repository.getAccountsForUserSnapshot(cleanEmail)
-                val allAccounts = repository.getAllAccountsSnapshot()
-                val effectiveAccounts = when {
-                    localAccounts.isNotEmpty() -> localAccounts
-                    cleanEmail.equals(_userEmail.value.trim().lowercase(), ignoreCase = true) -> allAccounts
-                    result.isEmpty() -> allAccounts.take(15)
-                    else -> emptyList()
-                }
-
-                for (acc in effectiveAccounts) {
-                    val existingIdx = result.indexOfFirst { it.first.name.equals(acc.name, ignoreCase = true) }
-                    val txs = repository.getTransactionsSnapshotForAccount(acc.id)
-                    if (existingIdx >= 0) {
-                        val existingPair = result[existingIdx]
-                        val mergedTxs = (existingPair.second + txs).distinctBy { 
-                            if (it.id > 0) it.id.toString() else "${it.date}_${it.amount}"
-                        }.sortedByDescending { it.date }
-                        result[existingIdx] = Pair(existingPair.first, mergedTxs)
-                    } else {
-                        result.add(Pair(acc, txs))
-                    }
+                // Deliver updated cloud merged results
+                withContext(Dispatchers.Main) {
+                    onResult(resultList.toList())
                 }
             } catch (e: Exception) {
+                // Timeout or error: UI already has initial local results
                 e.printStackTrace()
-            }
-
-            withContext(Dispatchers.Main) {
-                onResult(result)
             }
         }
     }
@@ -927,7 +949,7 @@ class TawthiqViewModel(application: Application) : AndroidViewModel(application)
             // 2. Fetch users registered in Firestore `system_admin_users`
             try {
                 val adminUsersTask = db.collection("system_admin_users").get()
-                val adminUsersSnap = Tasks.await(adminUsersTask)
+                val adminUsersSnap = adminUsersTask.awaitTask()
                 for (doc in adminUsersSnap.documents) {
                     val email = doc.getString("email")?.trim()?.lowercase() ?: ""
                     if (email.isNotBlank()) {
@@ -957,7 +979,7 @@ class TawthiqViewModel(application: Application) : AndroidViewModel(application)
             // 3. Fetch all accounts and merchants from `live_statements`
             try {
                 val statementsTask = db.collection("live_statements").get()
-                val statementsSnap = Tasks.await(statementsTask)
+                val statementsSnap = statementsTask.awaitTask()
                 val merchantStatements = mutableMapOf<String, MutableSet<String>>()
                 val merchantStores = mutableMapOf<String, String>()
                 val merchantPhones = mutableMapOf<String, String>()
@@ -1011,7 +1033,7 @@ class TawthiqViewModel(application: Application) : AndroidViewModel(application)
             // 4. Fetch transactions to aggregate volume per user
             try {
                 val txTask = db.collection("transactions").get()
-                val txSnap = Tasks.await(txTask)
+                val txSnap = txTask.awaitTask()
                 val userVolumes = mutableMapOf<String, Double>()
 
                 for (doc in txSnap.documents) {
@@ -1166,6 +1188,37 @@ class TawthiqViewModel(application: Application) : AndroidViewModel(application)
         )
         savePaymentMethodsInternal(defaultMethods)
         return defaultMethods
+    }
+
+        private var paymentMethodsListenerRegistration: ListenerRegistration? = null
+
+    fun listenToPaymentMethods() {
+        paymentMethodsListenerRegistration?.remove()
+        try {
+            val db = FirebaseFirestore.getInstance()
+            paymentMethodsListenerRegistration = db.collection("system_payment_methods").addSnapshotListener { snapshot, e ->
+                if (e != null || snapshot == null) return@addSnapshotListener
+                val list = mutableListOf<PaymentMethodConfig>()
+                for (doc in snapshot.documents) {
+                    val id = doc.getString("id") ?: doc.id
+                    val name = doc.getString("name") ?: ""
+                    val accountNumber = doc.getString("accountNumber") ?: ""
+                    val accountHolder = doc.getString("accountHolder") ?: ""
+                    val instructions = doc.getString("instructions") ?: ""
+                    val iconName = doc.getString("iconName") ?: "wallet"
+                    val isActive = doc.getBoolean("isActive") ?: true
+                    if (name.isNotBlank()) {
+                        list.add(PaymentMethodConfig(id, name, accountNumber, accountHolder, instructions, iconName, isActive))
+                    }
+                }
+                if (list.isNotEmpty()) {
+                    _paymentMethods.value = list
+                    savePaymentMethodsInternal(list)
+                }
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
     }
 
     private fun savePaymentMethodsInternal(list: List<PaymentMethodConfig>) {
@@ -1517,7 +1570,36 @@ class TawthiqViewModel(application: Application) : AndroidViewModel(application)
     private var broadcastListenerRegistration: com.google.firebase.firestore.ListenerRegistration? = null
 
     fun listenToSystemBroadcasts() {
+        val localSaved = loadSavedBroadcastMessages()
+        if (localSaved.isNotEmpty()) {
+            _systemBroadcasts.value = localSaved
+        }
         broadcastListenerRegistration?.remove()
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val db = FirebaseFirestore.getInstance()
+                val snapshot = db.collection("system_broadcasts").get().awaitTask()
+                val list = mutableListOf<SystemBroadcastMessage>()
+                for (doc in snapshot.documents) {
+                    val id = doc.getString("id") ?: doc.id
+                    val title = doc.getString("title") ?: ""
+                    val msg = doc.getString("message") ?: ""
+                    val sender = doc.getString("sender") ?: "إدارة تطبيق البيان"
+                    val sentAt = doc.getLong("sentAt") ?: System.currentTimeMillis()
+                    if (title.isNotBlank() || msg.isNotBlank()) {
+                        list.add(SystemBroadcastMessage(id, title, msg, sender, sentAt))
+                    }
+                }
+                if (list.isNotEmpty()) {
+                    val sorted = list.sortedByDescending { it.sentAt }
+                    withContext(Dispatchers.Main) {
+                        _systemBroadcasts.value = sorted
+                    }
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
         try {
             val db = FirebaseFirestore.getInstance()
             broadcastListenerRegistration = db.collection("system_broadcasts").addSnapshotListener { snapshot, e ->
@@ -1601,7 +1683,7 @@ class TawthiqViewModel(application: Application) : AndroidViewModel(application)
             val cleanId = cleanEmail.replace(".", "_").replace("@", "_")
             try {
                 val db = FirebaseFirestore.getInstance()
-                val snapshot = Tasks.await(db.collection("system_admin_users").document(cleanId).get())
+                val snapshot = db.collection("system_admin_users").document(cleanId).get().awaitTask()
                 if (snapshot.exists()) {
                     val status = snapshot.getString("status") ?: "ACTIVE"
                     _currentUserAccountStatus.value = status
@@ -1720,7 +1802,7 @@ class TawthiqViewModel(application: Application) : AndroidViewModel(application)
                 val cleanId = cleanEmail.replace(".", "_").replace("@", "_")
                 val db = FirebaseFirestore.getInstance()
                 val docRef = db.collection("system_admin_users").document(cleanId)
-                val snapshot = Tasks.await(docRef.get())
+                val snapshot = docRef.get().awaitTask()
 
                 if (snapshot.exists()) {
                     val cloudStatus = snapshot.getString("status") ?: currentStatus
@@ -1959,6 +2041,7 @@ class TawthiqViewModel(application: Application) : AndroidViewModel(application)
         loadUserProfile(_userEmail.value)
         syncAdminDataFromCloud()
         listenToSystemBroadcasts()
+        listenToPaymentMethods()
         listenToUserAccountStatus(_userEmail.value)
 
         // Automatically clean and deduplicate all transactions across accounts on startup

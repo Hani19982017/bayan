@@ -30,22 +30,16 @@ class TawthiqApplication : Application() {
             val prefs = getSharedPreferences("tawthiq_prefs", Context.MODE_PRIVATE)
             val isAuthV2Init = prefs.getBoolean("auth_v2_initialized", false)
             if (!isAuthV2Init) {
-                prefs.edit()
-                    .putBoolean("is_logged_in", false)
-                    .putBoolean("is_staff_logged_in", false)
-                    .remove("user_email")
-                    .remove("staff_merchant_email")
-                    .remove("staff_user_id")
-                    .remove("staff_user_name")
-                    .remove("staff_user_role")
-                    .remove("staff_permission_type")
-                    .remove("staff_permissions")
-                    .remove("staff_store_name")
-                    .remove("staff_avatar_uri")
-                    .remove("saved_customer_account_id")
-                    .putBoolean("is_customer_mode", false)
-                    .putBoolean("auth_v2_initialized", true)
-                    .apply()
+                val hasUser = !prefs.getString("user_email", "").isNullOrBlank()
+                val editor = prefs.edit().putBoolean("auth_v2_initialized", true)
+                if (!hasUser) {
+                    editor.putBoolean("is_logged_in", false)
+                        .putBoolean("is_staff_logged_in", false)
+                        .remove("staff_merchant_email")
+                        .remove("saved_customer_account_id")
+                        .putBoolean("is_customer_mode", false)
+                }
+                editor.apply()
             }
 
             // 3. Start Firestore Live Sync immediately if customer session is saved

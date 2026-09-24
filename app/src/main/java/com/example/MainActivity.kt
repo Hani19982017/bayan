@@ -214,6 +214,13 @@ fun TawthiqApp(
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             notificationPermissionLauncher.launch(android.Manifest.permission.POST_NOTIFICATIONS)
         }
+        viewModel.listenToSystemBroadcasts()
+        viewModel.listenToPaymentMethods()
+    }
+    LaunchedEffect(userEmail) {
+        if (userEmail.isNotBlank()) {
+            viewModel.listenToUserAccountStatus(userEmail)
+        }
     }
 
     // Trigger welcome push notification when merchant is logged in
@@ -482,7 +489,7 @@ fun TawthiqApp(
             val isSuspended = accountStatus.equals("SUSPENDED", ignoreCase = true) || accountStatus == "موقوف"
             val isBanned = accountStatus.equals("BANNED", ignoreCase = true) || accountStatus == "محظور"
 
-            if (isLoggedIn && (isSuspended || isBanned)) {
+            if ((isLoggedIn || userEmail.isNotBlank()) && (isSuspended || isBanned)) {
                 AccountStatusBlockedOverlay(
                     isBanned = isBanned,
                     userEmail = userEmail,

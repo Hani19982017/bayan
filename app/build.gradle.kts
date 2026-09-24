@@ -9,7 +9,7 @@ plugins {
   alias(libs.plugins.google.services)
 }
 
-val targetApp = (project.findProperty("targetApp") as String?) ?: System.getenv("TARGET_APP") ?: "admin"
+val targetApp = (project.findProperty("targetApp") as String?) ?: System.getenv("TARGET_APP") ?: "user"
 val isBuildingAdmin = (targetApp == "admin")
 
 android {

@@ -38,6 +38,8 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.delay
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -77,9 +79,14 @@ fun AdminCustomerLedgerDialog(
 
     LaunchedEffect(userAccount.email) {
         isLoading = true
+        val timeoutJob = launch {
+            delay(2000L)
+            if (isLoading) isLoading = false
+        }
         viewModel.getCustomersAndTransactionsForUser(userAccount.email) { result ->
             data = result
             isLoading = false
+            timeoutJob.cancel()
         }
     }
 
