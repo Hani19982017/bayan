@@ -398,7 +398,9 @@ fun AdminLoginScreen(
                                                 isOwnerEmail
 
                                         if (isOwnerEmail || isValidSecret) {
-                                            viewModel.login(adminEmail.trim(), "مشرف النظام المعتمد")
+                                            val validEmail = if (adminEmail.contains("@")) adminEmail.trim().lowercase() else "${adminEmail.trim().lowercase()}@tawthiq.app"
+                                            viewModel.loginWithEmail(validEmail, merchant = "مشرف النظام", store = "الإدارة العامة للبيان")
+                                            viewModel.syncAdminDataFromCloud()
                                             Toast.makeText(context, "تم التحقق الأمني بنجاح! مرحباً بك في لوحة المشرف", Toast.LENGTH_LONG).show()
                                             isLoading = false
                                             onLoginSuccess()

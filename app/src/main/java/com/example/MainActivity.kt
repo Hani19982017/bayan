@@ -139,6 +139,13 @@ class MainActivity : ComponentActivity() {
             viewModel.selectAccount(deepLinkAccountId)
         }
 
+        // Initialize cloud listeners immediately on app start
+        viewModel.listenToSystemBroadcasts()
+        viewModel.listenToPaymentMethods()
+        if (com.example.BuildConfig.IS_ADMIN_APP) {
+            viewModel.syncAdminDataFromCloud()
+        }
+
         setContent {
             val themeMode by viewModel.themeMode.collectAsStateWithLifecycle()
             val systemDark = isSystemInDarkTheme()

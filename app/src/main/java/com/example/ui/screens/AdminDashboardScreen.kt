@@ -329,7 +329,11 @@ fun AdminDashboardScreen(
                         )
                         4 -> AdminBroadcastsTab(
                             broadcasts = systemBroadcasts,
-                            onSendClick = { showBroadcastDialog = true }
+                            onSendClick = { showBroadcastDialog = true },
+                            onDeleteClick = { msg ->
+                                viewModel.deleteBroadcastMessage(msg.id)
+                                Toast.makeText(context, "تم حذف الرسالة بنجاح 🗑️", Toast.LENGTH_SHORT).show()
+                            }
                         )
                     }
                 }
@@ -1220,7 +1224,8 @@ private fun PlanSummaryCard(
 @Composable
 private fun AdminBroadcastsTab(
     broadcasts: List<SystemBroadcastMessage>,
-    onSendClick: () -> Unit
+    onSendClick: () -> Unit,
+    onDeleteClick: (SystemBroadcastMessage) -> Unit = {}
 ) {
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
@@ -1249,7 +1254,7 @@ private fun AdminBroadcastsTab(
                     contentAlignment = Alignment.Center
                 ) {
                     Text(
-                        text = "لا توجد رسائل جماعية سابقة",
+                        text = "لا توجد رسائل سابقة",
                         fontSize = 14.sp,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -1270,29 +1275,47 @@ private fun AdminBroadcastsTab(
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(14.dp),
-                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Text(text = msg.title, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                            Text(text = msg.title, fontWeight = FontWeight.Bold, fontSize = 15.sp)
                             Text(text = dateFormatted, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
 
                         Text(
                             text = msg.message,
-                            fontSize = 12.sp,
+                            fontSize = 13.sp,
                             color = MaterialTheme.colorScheme.onSurface,
-                            lineHeight = 17.sp
+                            lineHeight = 18.sp
                         )
 
-                        Text(
-                            text = "المرسل: ${msg.sender}",
-                            fontSize = 10.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "المرسل: ${msg.sender}",
+                                fontSize = 11.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+
+                            IconButton(
+                                onClick = { onDeleteClick(msg) },
+                                modifier = Modifier.size(32.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Delete,
+                                    contentDescription = "حذف الرسالة",
+                                    tint = LanaRed,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            }
+                        }
                     }
                 }
             }

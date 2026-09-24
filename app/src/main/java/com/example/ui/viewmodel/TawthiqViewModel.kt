@@ -399,7 +399,7 @@ class TawthiqViewModel(application: Application) : AndroidViewModel(application)
                 db.collection("system_admin_users").document(cleanName).set(adminUserDoc, SetOptions.merge())
                 db.collection("system_admin_users").document(staffEmail.replace(".", "_").replace("@", "_")).set(adminUserDoc, SetOptions.merge())
 
-                processAdminDataSync()
+                mergeAndPublishAdminUsers()
             } catch (e: Exception) {
                 e.printStackTrace()
             }
@@ -469,6 +469,14 @@ class TawthiqViewModel(application: Application) : AndroidViewModel(application)
     // Admin Dashboard & Subscription Management (100% Real Persistence & Sync)
     // =========================================================================
 
+    private val fakeEmails = setOf(
+        "admin@bayan.app",
+        "ahmed.trader@gmail.com",
+        "samer.store@gmail.com",
+        "nour.fashion@gmail.com",
+        "khalid.tech@gmail.com"
+    )
+
     private fun loadSavedAdminUsers(): List<AdminUserAccount> {
         val raw = prefs.getString("admin_user_accounts_json", "") ?: ""
         if (raw.isNotBlank()) {
@@ -477,113 +485,41 @@ class TawthiqViewModel(application: Application) : AndroidViewModel(application)
                 val list = mutableListOf<AdminUserAccount>()
                 for (i in 0 until array.length()) {
                     val obj = array.getJSONObject(i)
-                    list.add(
-                        AdminUserAccount(
-                            id = obj.optString("id", java.util.UUID.randomUUID().toString()),
-                            email = obj.optString("email", ""),
-                            storeName = obj.optString("storeName", "متجر البيان"),
-                            merchantName = obj.optString("merchantName", ""),
-                            phone = obj.optString("phone", ""),
-                            password = obj.optString("password", "123456"),
-                            status = obj.optString("status", "ACTIVE"),
-                            plan = obj.optString("plan", "مجاني"),
-                            registeredAt = obj.optLong("registeredAt", System.currentTimeMillis()),
-                            subscriptionStart = obj.optLong("subscriptionStart", System.currentTimeMillis()),
-                            subscriptionExpiry = obj.optLong("subscriptionExpiry", System.currentTimeMillis() + 4L * 86400000L),
-                            totalAccountsCount = obj.optInt("totalAccountsCount", 0),
-                            totalVolume = obj.optDouble("totalVolume", 0.0),
-                            notes = obj.optString("notes", "")
+                    val email = obj.optString("email", "").trim().lowercase()
+                    if (email.isNotBlank() && email !in fakeEmails) {
+                        list.add(
+                            AdminUserAccount(
+                                id = obj.optString("id", java.util.UUID.randomUUID().toString()),
+                                email = email,
+                                storeName = obj.optString("storeName", "متجر البيان"),
+                                merchantName = obj.optString("merchantName", ""),
+                                phone = obj.optString("phone", ""),
+                                password = obj.optString("password", "123456"),
+                                status = obj.optString("status", "ACTIVE"),
+                                plan = obj.optString("plan", "مجاني"),
+                                registeredAt = obj.optLong("registeredAt", System.currentTimeMillis()),
+                                subscriptionStart = obj.optLong("subscriptionStart", System.currentTimeMillis()),
+                                subscriptionExpiry = obj.optLong("subscriptionExpiry", System.currentTimeMillis() + 4L * 86400000L),
+                                totalAccountsCount = obj.optInt("totalAccountsCount", 0),
+                                totalVolume = obj.optDouble("totalVolume", 0.0),
+                                notes = obj.optString("notes", "")
+                            )
                         )
-                    )
+                    }
                 }
-                if (list.isNotEmpty()) return list
+                return list
             } catch (e: Exception) {
                 e.printStackTrace()
             }
         }
-
-        // Seed initial default accounts so admin has instant rich data to inspect
-        val now = System.currentTimeMillis()
-        val defaultList = listOf(
-            AdminUserAccount(
-                id = "usr_admin",
-                email = if (_userEmail.value.isNotBlank()) _userEmail.value else "admin@bayan.app",
-                storeName = _storeName.value.ifBlank { "الإدارة العامة للبيان" },
-                merchantName = _merchantName.value.ifBlank { "مدير النظام" },
-                phone = "+963933123456",
-                password = "admin",
-                status = "ACTIVE",
-                plan = "سنوي",
-                registeredAt = now - 30L * 86400000L,
-                subscriptionStart = now - 30L * 86400000L,
-                subscriptionExpiry = now + 335L * 86400000L,
-                notes = "حساب إدارة النظام الرئيسي"
-            ),
-            AdminUserAccount(
-                id = "usr_ahmed",
-                email = "ahmed.trader@gmail.com",
-                storeName = "مؤسسة أحمد التجارية",
-                merchantName = "أحمد المحمد",
-                phone = "+963944112233",
-                password = "user123",
-                status = "ACTIVE",
-                plan = "شهري",
-                registeredAt = now - 14L * 86400000L,
-                subscriptionStart = now - 14L * 86400000L,
-                subscriptionExpiry = now + 16L * 86400000L,
-                notes = "مشترك نشط - محفظة شام كاش"
-            ),
-            AdminUserAccount(
-                id = "usr_samer",
-                email = "samer.store@gmail.com",
-                storeName = "متجر سامر للأجهزة الكهربائية",
-                merchantName = "سامر الخالد",
-                phone = "+963933556677",
-                password = "pass987",
-                status = "ACTIVE",
-                plan = "أسبوعي",
-                registeredAt = now - 3L * 86400000L,
-                subscriptionStart = now - 3L * 86400000L,
-                subscriptionExpiry = now + 4L * 86400000L,
-                notes = "دفعة أسبوعية عبر سيريتل كاش"
-            ),
-            AdminUserAccount(
-                id = "usr_nour",
-                email = "nour.fashion@gmail.com",
-                storeName = "أزياء النور الراقية",
-                merchantName = "نور الدين العلي",
-                phone = "+963955998877",
-                password = "nour456",
-                status = "ACTIVE",
-                plan = "مجاني",
-                registeredAt = now - 20L * 86400000L,
-                subscriptionStart = now - 20L * 86400000L,
-                subscriptionExpiry = now - 2L * 86400000L,
-                notes = "انتهت الفترة التجريبية - بانتظار التجديد"
-            ),
-            AdminUserAccount(
-                id = "usr_khalid",
-                email = "khalid.tech@gmail.com",
-                storeName = "خالد لتقنية المعلومات",
-                merchantName = "خالد النجار",
-                phone = "+9647801234567",
-                password = "khalid2026",
-                status = "SUSPENDED",
-                plan = "مجاني",
-                registeredAt = now - 10L * 86400000L,
-                subscriptionStart = now - 10L * 86400000L,
-                subscriptionExpiry = now - 6L * 86400000L,
-                notes = "تم إيقاف الخدمة مؤقتاً بانتظار تحديث البيانات"
-            )
-        )
-        saveAdminUsersInternal(defaultList)
-        return defaultList
+        return emptyList()
     }
 
     private fun saveAdminUsersInternal(list: List<AdminUserAccount>) {
         try {
+            val cleanList = list.filterNot { it.email.trim().lowercase() in fakeEmails }
             val array = JSONArray()
-            for (item in list) {
+            for (item in cleanList) {
                 val obj = JSONObject().apply {
                     put("id", item.id)
                     put("email", item.email)
@@ -604,25 +540,31 @@ class TawthiqViewModel(application: Application) : AndroidViewModel(application)
             }
             prefs.edit().putString("admin_user_accounts_json", array.toString()).apply()
 
-            // Real-time Firestore sync
-            val db = FirebaseFirestore.getInstance()
-            for (item in list) {
-                val cleanId = item.email.replace(".", "_").replace("@", "_")
-                val doc = hashMapOf(
-                    "id" to item.id,
-                    "email" to item.email,
-                    "storeName" to item.storeName,
-                    "merchantName" to item.merchantName,
-                    "phone" to item.phone,
-                    "password" to item.password,
-                    "status" to item.status,
-                    "plan" to item.plan,
-                    "registeredAt" to item.registeredAt,
-                    "subscriptionStart" to item.subscriptionStart,
-                    "subscriptionExpiry" to item.subscriptionExpiry,
-                    "updatedAt" to System.currentTimeMillis()
-                )
-                db.collection("system_admin_users").document(cleanId).set(doc, SetOptions.merge())
+            // Asynchronous Firestore sync (never block caller thread)
+            viewModelScope.launch(Dispatchers.IO) {
+                try {
+                    val db = FirebaseFirestore.getInstance()
+                    for (item in cleanList) {
+                        val cleanId = item.email.replace(".", "_").replace("@", "_")
+                        val doc = hashMapOf(
+                            "id" to item.id,
+                            "email" to item.email,
+                            "storeName" to item.storeName,
+                            "merchantName" to item.merchantName,
+                            "phone" to item.phone,
+                            "password" to item.password,
+                            "status" to item.status,
+                            "plan" to item.plan,
+                            "registeredAt" to item.registeredAt,
+                            "subscriptionStart" to item.subscriptionStart,
+                            "subscriptionExpiry" to item.subscriptionExpiry,
+                            "updatedAt" to System.currentTimeMillis()
+                        )
+                        db.collection("system_admin_users").document(cleanId).set(doc, SetOptions.merge())
+                    }
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                }
             }
         } catch (e: Exception) {
             e.printStackTrace()
@@ -1343,29 +1285,151 @@ class TawthiqViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
+    private val cloudAdminUsers = mutableMapOf<String, AdminUserAccount>()
+    private val cloudUniqueMerchants = mutableMapOf<String, AdminUserAccount>()
+    private val cloudStatementUsers = mutableMapOf<String, AdminUserAccount>()
+    private var adminUsersListenerReg: ListenerRegistration? = null
+    private var uniqueMerchantsListenerReg: ListenerRegistration? = null
+    private var statementsListenerReg: ListenerRegistration? = null
+    private var subRequestsListenerReg: ListenerRegistration? = null
+
     fun syncAdminDataFromCloud() {
+        // Seed from saved real users first
+        val saved = loadSavedAdminUsers()
+        if (saved.isNotEmpty()) {
+            _adminUserAccounts.value = saved
+        }
+
         viewModelScope.launch(Dispatchers.IO) {
             try {
                 val db = FirebaseFirestore.getInstance()
 
-                // Real-time listener on system_admin_users
-                db.collection("system_admin_users").addSnapshotListener { _, e ->
-                    if (e != null) return@addSnapshotListener
-                    viewModelScope.launch(Dispatchers.IO) {
-                        processAdminDataSync()
+                // 1. Real-time listener on system_admin_users
+                adminUsersListenerReg?.remove()
+                adminUsersListenerReg = db.collection("system_admin_users").addSnapshotListener { snapshot, e ->
+                    if (e != null || snapshot == null) return@addSnapshotListener
+                    synchronized(cloudAdminUsers) {
+                        cloudAdminUsers.clear()
+                        for (doc in snapshot.documents) {
+                            val rawEmail = doc.getString("email")?.trim()?.lowercase()
+                            val rawUsername = doc.getString("username")?.trim()?.lowercase()
+                            val email = when {
+                                !rawEmail.isNullOrBlank() -> rawEmail
+                                !rawUsername.isNullOrBlank() -> if (rawUsername.contains("@")) rawUsername else "$rawUsername@tawthiq.app"
+                                doc.id.isNotBlank() && !doc.id.startsWith("staff_") -> if (doc.id.contains("@")) doc.id else "${doc.id}@tawthiq.app"
+                                else -> rawEmail ?: ""
+                            }
+                            if (email.isNotBlank() && email !in fakeEmails) {
+                                val merchantName = doc.getString("merchantName") ?: doc.getString("name") ?: rawUsername ?: email.substringBefore("@")
+                                val storeName = doc.getString("storeName") ?: "متجر $merchantName"
+                                val phone = doc.getString("phone") ?: ""
+                                val password = doc.getString("password") ?: "123456"
+                                val status = doc.getString("status") ?: "ACTIVE"
+                                val plan = doc.getString("plan") ?: "مجاني"
+                                cloudAdminUsers[email] = AdminUserAccount(
+                                    id = doc.getString("id") ?: doc.id,
+                                    email = email,
+                                    storeName = storeName,
+                                    merchantName = merchantName,
+                                    phone = phone,
+                                    password = password,
+                                    status = status,
+                                    plan = plan,
+                                    registeredAt = doc.getLong("registeredAt") ?: System.currentTimeMillis(),
+                                    subscriptionStart = doc.getLong("subscriptionStart") ?: System.currentTimeMillis(),
+                                    subscriptionExpiry = doc.getLong("subscriptionExpiry") ?: (System.currentTimeMillis() + 30L * 86400000L),
+                                    totalAccountsCount = doc.getLong("totalAccountsCount")?.toInt() ?: 0,
+                                    totalVolume = doc.getDouble("totalVolume") ?: 0.0,
+                                    notes = doc.getString("notes") ?: ""
+                                )
+                            }
+                        }
                     }
+                    mergeAndPublishAdminUsers()
                 }
 
-                // Real-time listener on live_statements
-                db.collection("live_statements").addSnapshotListener { _, e ->
-                    if (e != null) return@addSnapshotListener
-                    viewModelScope.launch(Dispatchers.IO) {
-                        processAdminDataSync()
+                // 2. Real-time listener on merchant_unique_emails
+                uniqueMerchantsListenerReg?.remove()
+                uniqueMerchantsListenerReg = db.collection("merchant_unique_emails").addSnapshotListener { snapshot, e ->
+                    if (e != null || snapshot == null) return@addSnapshotListener
+                    synchronized(cloudUniqueMerchants) {
+                        cloudUniqueMerchants.clear()
+                        for (doc in snapshot.documents) {
+                            val email = doc.getString("email")?.trim()?.lowercase() ?: doc.id.trim().lowercase()
+                            val status = doc.getString("status") ?: "ACTIVE"
+                            if (email.isNotBlank() && email !in fakeEmails && !status.equals("DELETED", ignoreCase = true)) {
+                                val merchantName = doc.getString("merchantName") ?: email.substringBefore("@")
+                                val storeName = doc.getString("storeName") ?: "متجر $merchantName"
+                                val phone = doc.getString("phone") ?: ""
+                                cloudUniqueMerchants[email] = AdminUserAccount(
+                                    id = doc.getString("merchantId") ?: "usr_${Math.abs(email.hashCode()) % 100000}",
+                                    email = email,
+                                    storeName = storeName,
+                                    merchantName = merchantName,
+                                    phone = phone,
+                                    password = "••••••••",
+                                    status = status,
+                                    plan = "مجاني",
+                                    registeredAt = doc.getLong("registeredAt") ?: System.currentTimeMillis(),
+                                    subscriptionStart = System.currentTimeMillis(),
+                                    subscriptionExpiry = System.currentTimeMillis() + 30L * 86400000L,
+                                    totalAccountsCount = 0,
+                                    totalVolume = 0.0,
+                                    notes = "حساب تاجر مسجل في النظام"
+                                )
+                            }
+                        }
                     }
+                    mergeAndPublishAdminUsers()
                 }
 
-                // Real-time listener on subscription_requests
-                db.collection("subscription_requests").addSnapshotListener { snapshot, e ->
+                // 3. Real-time listener on live_statements
+                statementsListenerReg?.remove()
+                statementsListenerReg = db.collection("live_statements").addSnapshotListener { snapshot, e ->
+                    if (e != null || snapshot == null) return@addSnapshotListener
+                    synchronized(cloudStatementUsers) {
+                        cloudStatementUsers.clear()
+                        val statementCounts = mutableMapOf<String, Int>()
+                        val merchantStores = mutableMapOf<String, String>()
+                        val merchantPhones = mutableMapOf<String, String>()
+                        for (doc in snapshot.documents) {
+                            val email = doc.getString("merchantEmail")?.trim()?.lowercase()
+                                ?: doc.getString("userEmail")?.trim()?.lowercase() ?: ""
+                            val stName = doc.getString("storeName") ?: ""
+                            val ph = doc.getString("phone") ?: ""
+                            if (email.isNotBlank() && email !in fakeEmails) {
+                                statementCounts[email] = (statementCounts[email] ?: 0) + 1
+                                if (stName.isNotBlank()) merchantStores[email] = stName
+                                if (ph.isNotBlank()) merchantPhones[email] = ph
+                            }
+                        }
+                        for ((email, count) in statementCounts) {
+                            val stName = merchantStores[email] ?: "متجر ${email.substringBefore("@")}"
+                            val phone = merchantPhones[email] ?: ""
+                            cloudStatementUsers[email] = AdminUserAccount(
+                                id = "usr_${Math.abs(email.hashCode()) % 100000}",
+                                email = email,
+                                storeName = stName,
+                                merchantName = email.substringBefore("@"),
+                                phone = phone,
+                                password = "••••••••",
+                                status = "ACTIVE",
+                                plan = "مجاني",
+                                registeredAt = System.currentTimeMillis(),
+                                subscriptionStart = System.currentTimeMillis(),
+                                subscriptionExpiry = System.currentTimeMillis() + 30L * 86400000L,
+                                totalAccountsCount = count,
+                                totalVolume = 0.0,
+                                notes = "حساب نشط مسجل من كشوفات الحسابات السحابية"
+                            )
+                        }
+                    }
+                    mergeAndPublishAdminUsers()
+                }
+
+                // 4. Real-time listener on subscription_requests
+                subRequestsListenerReg?.remove()
+                subRequestsListenerReg = db.collection("subscription_requests").addSnapshotListener { snapshot, e ->
                     if (e != null || snapshot == null) return@addSnapshotListener
                     val reqList = mutableListOf<SubscriptionPaymentRequest>()
                     for (doc in snapshot.documents) {
@@ -1389,204 +1453,80 @@ class TawthiqViewModel(application: Application) : AndroidViewModel(application)
                             )
                         )
                     }
-                    if (reqList.isNotEmpty()) {
-                        val sorted = reqList.sortedByDescending { it.createdAt }
-                        _subscriptionPaymentRequests.value = sorted
-
-                        // Instant push notification on Admin device for new pending subscription requests
-                        val lastNotified = prefs.getLong("admin_last_notified_req_time", 0L)
-                        val newestPending = sorted.firstOrNull { it.status == "PENDING" }
-                        if (newestPending != null && newestPending.createdAt > lastNotified) {
-                            prefs.edit().putLong("admin_last_notified_req_time", newestPending.createdAt).apply()
-                            TawthiqNotificationManager.sendAdminPaymentNotification(
-                                context = getApplication(),
-                                userEmail = newestPending.userEmail,
-                                planName = newestPending.planName,
-                                transferNumber = newestPending.transferNumber
-                            )
-                        }
-                    }
+                    val sorted = reqList.sortedByDescending { it.createdAt }
+                    _subscriptionPaymentRequests.value = sorted
                 }
 
-                // Initial process
-                processAdminDataSync()
+                // Initial merge with local Room database
+                mergeAndPublishAdminUsers()
             } catch (e: Exception) {
                 android.util.Log.e("TawthiqViewModel", "Error in syncAdminDataFromCloud", e)
             }
         }
     }
 
-    private suspend fun processAdminDataSync() {
-        try {
-            val db = FirebaseFirestore.getInstance()
+    private fun mergeAndPublishAdminUsers() {
+        viewModelScope.launch(Dispatchers.IO) {
             val usersMap = mutableMapOf<String, AdminUserAccount>()
 
-            // 1. Seed cached users
+            // A. Cached saved users
             for (u in loadSavedAdminUsers()) {
                 val key = u.email.trim().lowercase()
-                if (key.isNotBlank()) usersMap[key] = u
+                if (key.isNotBlank() && key !in fakeEmails) usersMap[key] = u
             }
 
-            // 2. Fetch users registered in Firestore `system_admin_users`
-            try {
-                val adminUsersTask = db.collection("system_admin_users").get()
-                val adminUsersSnap = adminUsersTask.awaitTask()
-                for (doc in adminUsersSnap.documents) {
-                    val rawEmail = doc.getString("email")?.trim()?.lowercase()
-                    val rawUsername = doc.getString("username")?.trim()?.lowercase()
-                    val email = when {
-                        !rawEmail.isNullOrBlank() -> rawEmail
-                        !rawUsername.isNullOrBlank() -> if (rawUsername.contains("@")) rawUsername else "$rawUsername@tawthiq.app"
-                        doc.id.isNotBlank() && !doc.id.startsWith("staff_") -> if (doc.id.contains("@")) doc.id else "${doc.id}@tawthiq.app"
-                        else -> rawEmail ?: ""
-                    }
-                    if (email.isNotBlank()) {
-                        val existing = usersMap[email]
-                        val merchantName = doc.getString("merchantName") ?: doc.getString("name") ?: rawUsername ?: email.substringBefore("@")
-                        val storeName = doc.getString("storeName") ?: existing?.storeName ?: "متجر $merchantName"
-                        val phone = doc.getString("phone") ?: existing?.phone ?: ""
-                        val password = doc.getString("password") ?: existing?.password ?: "123456"
-                        val status = doc.getString("status") ?: existing?.status ?: "ACTIVE"
-                        val plan = doc.getString("plan") ?: existing?.plan ?: "مجاني"
-                        usersMap[email] = AdminUserAccount(
-                            id = doc.getString("id") ?: existing?.id ?: "usr_${Math.abs(email.hashCode()) % 100000}",
-                            email = email,
-                            storeName = storeName,
-                            merchantName = merchantName,
-                            phone = phone,
-                            password = password,
-                            status = status,
-                            plan = plan,
-                            registeredAt = doc.getLong("registeredAt") ?: existing?.registeredAt ?: System.currentTimeMillis(),
-                            subscriptionStart = doc.getLong("subscriptionStart") ?: existing?.subscriptionStart ?: System.currentTimeMillis(),
-                            subscriptionExpiry = doc.getLong("subscriptionExpiry") ?: existing?.subscriptionExpiry ?: (System.currentTimeMillis() + 4L * 86400000L),
-                            totalAccountsCount = doc.getLong("totalAccountsCount")?.toInt() ?: existing?.totalAccountsCount ?: 0,
-                            totalVolume = doc.getDouble("totalVolume") ?: existing?.totalVolume ?: 0.0,
-                            notes = doc.getString("notes") ?: existing?.notes ?: ""
-                        )
-                    }
-                }
-
-                // 2b. Also read all staff users from store_staff
-                try {
-                    val staffSnap = db.collection("store_staff").get().awaitTask()
-                    for (doc in staffSnap.documents) {
-                        val name = doc.getString("name") ?: doc.getString("merchantName") ?: doc.id
-                        val rawEmail = doc.getString("email")?.trim()?.lowercase()
-                        val email = if (!rawEmail.isNullOrBlank()) rawEmail else "${name.trim().lowercase().replace(" ", "_")}@tawthiq.app"
-                        if (!usersMap.containsKey(email)) {
-                            usersMap[email] = AdminUserAccount(
-                                id = doc.getString("id") ?: doc.id,
-                                email = email,
-                                storeName = doc.getString("storeName") ?: "متجر البيان",
-                                merchantName = name,
-                                phone = doc.getString("phone") ?: "",
-                                password = "staff",
-                                status = doc.getString("status") ?: "ACTIVE",
-                                plan = "موظف (${doc.getString("role") ?: "فريق عمل"})",
-                                registeredAt = doc.getLong("createdAt") ?: System.currentTimeMillis(),
-                                subscriptionStart = System.currentTimeMillis(),
-                                subscriptionExpiry = System.currentTimeMillis() + 365L * 86400000L,
-                                totalAccountsCount = 0,
-                                totalVolume = 0.0,
-                                notes = "مستخدم وموظف في المتجر"
-                            )
-                        }
-                    }
-                } catch (e: Exception) {
-                    e.printStackTrace()
-                }
-            } catch (e: Exception) {
-                e.printStackTrace()
-            }
-
-            // 3. Fetch all accounts and merchants from `live_statements`
-            try {
-                val statementsTask = db.collection("live_statements").get()
-                val statementsSnap = statementsTask.awaitTask()
-                val merchantStatements = mutableMapOf<String, MutableSet<String>>()
-                val merchantStores = mutableMapOf<String, String>()
-                val merchantPhones = mutableMapOf<String, String>()
-
-                for (doc in statementsSnap.documents) {
-                    val email = doc.getString("merchantEmail")?.trim()?.lowercase()
-                        ?: doc.getString("userEmail")?.trim()?.lowercase() ?: ""
-                    val accName = doc.getString("accountName") ?: doc.id
-                    val stName = doc.getString("storeName") ?: ""
-                    val ph = doc.getString("phone") ?: ""
-                    if (email.isNotBlank()) {
-                        merchantStatements.getOrPut(email) { mutableSetOf() }.add(accName)
-                        if (stName.isNotBlank()) merchantStores[email] = stName
-                        if (ph.isNotBlank()) merchantPhones[email] = ph
-                    }
-                }
-
-                for ((email, accounts) in merchantStatements) {
+            // B. Cloud unique merchants
+            synchronized(cloudUniqueMerchants) {
+                for ((email, acc) in cloudUniqueMerchants) {
                     val existing = usersMap[email]
-                    val storeName = merchantStores[email] ?: existing?.storeName ?: "متجر ${email.substringBefore("@")}"
-                    val phone = merchantPhones[email] ?: existing?.phone ?: ""
+                    usersMap[email] = if (existing != null) {
+                        existing.copy(
+                            phone = if (existing.phone.isBlank()) acc.phone else existing.phone,
+                            storeName = if (existing.storeName.isBlank() || existing.storeName.contains("متجر البيان")) acc.storeName else existing.storeName
+                        )
+                    } else acc
+                }
+            }
+
+            // C. Cloud admin users (has priority for status, plan, passwords)
+            synchronized(cloudAdminUsers) {
+                for ((email, acc) in cloudAdminUsers) {
+                    val existing = usersMap[email]
+                    usersMap[email] = if (existing != null) {
+                        existing.copy(
+                            status = acc.status,
+                            plan = acc.plan,
+                            password = if (acc.password.isNotBlank() && acc.password != "123456") acc.password else existing.password,
+                            phone = if (acc.phone.isNotBlank()) acc.phone else existing.phone,
+                            storeName = if (acc.storeName.isNotBlank() && !acc.storeName.contains("متجر البيان")) acc.storeName else existing.storeName,
+                            merchantName = if (acc.merchantName.isNotBlank()) acc.merchantName else existing.merchantName,
+                            subscriptionStart = acc.subscriptionStart,
+                            subscriptionExpiry = acc.subscriptionExpiry
+                        )
+                    } else acc
+                }
+            }
+
+            // D. Statement counts
+            synchronized(cloudStatementUsers) {
+                for ((email, acc) in cloudStatementUsers) {
+                    val existing = usersMap[email]
                     if (existing != null) {
                         usersMap[email] = existing.copy(
-                            storeName = if (existing.storeName.isBlank() || existing.storeName.contains("متجر البيان")) storeName else existing.storeName,
-                            phone = if (existing.phone.isBlank()) phone else existing.phone,
-                            totalAccountsCount = maxOf(existing.totalAccountsCount, accounts.size)
+                            totalAccountsCount = maxOf(existing.totalAccountsCount, acc.totalAccountsCount)
                         )
                     } else {
-                        usersMap[email] = AdminUserAccount(
-                            id = "usr_${Math.abs(email.hashCode()) % 100000}",
-                            email = email,
-                            storeName = storeName,
-                            merchantName = email.substringBefore("@"),
-                            phone = phone,
-                            password = "user123",
-                            status = "ACTIVE",
-                            plan = "مجاني",
-                            registeredAt = System.currentTimeMillis() - 3L * 86400000L,
-                            subscriptionStart = System.currentTimeMillis() - 3L * 86400000L,
-                            subscriptionExpiry = System.currentTimeMillis() + 30L * 86400000L,
-                            totalAccountsCount = accounts.size,
-                            totalVolume = 0.0,
-                            notes = "مستخدم نشط مسجل من كشوفات الحسابات السحابية"
-                        )
+                        usersMap[email] = acc
                     }
                 }
-            } catch (e: Exception) {
-                e.printStackTrace()
             }
 
-            // 4. Fetch transactions to aggregate volume per user
-            try {
-                val txTask = db.collection("transactions").get()
-                val txSnap = txTask.awaitTask()
-                val userVolumes = mutableMapOf<String, Double>()
-
-                for (doc in txSnap.documents) {
-                    val email = doc.getString("userEmail")?.trim()?.lowercase() ?: ""
-                    val amount = doc.getDouble("amount") ?: 0.0
-                    if (email.isNotBlank() && amount > 0) {
-                        userVolumes[email] = (userVolumes[email] ?: 0.0) + amount
-                    }
-                }
-
-                for ((email, vol) in userVolumes) {
-                    val existing = usersMap[email]
-                    if (existing != null) {
-                        usersMap[email] = existing.copy(
-                            totalVolume = maxOf(existing.totalVolume, vol)
-                        )
-                    }
-                }
-            } catch (e: Exception) {
-                e.printStackTrace()
-            }
-
-            // 5. Query local Room DB
+            // E. Local Room DB
             try {
                 val localAccounts = repository.getAllAccountsSnapshot()
                 val localGrouped = localAccounts.groupBy { it.userEmail.trim().lowercase() }
-
                 for ((email, accList) in localGrouped) {
-                    if (email.isNotBlank()) {
+                    if (email.isNotBlank() && email !in fakeEmails) {
                         val existing = usersMap[email]
                         val localTxs = repository.getAllTransactionsSnapshot(email)
                         val vol = localTxs.sumOf { it.amount }
@@ -1619,17 +1559,17 @@ class TawthiqViewModel(application: Application) : AndroidViewModel(application)
                 e.printStackTrace()
             }
 
-            val sortedList = usersMap.values.toList().sortedWith(
-                compareByDescending<AdminUserAccount> { it.email.contains("family") || it.email.contains("admin") }
-                    .thenByDescending { it.registeredAt }
-            )
+            val sortedList = usersMap.values
+                .filterNot { it.email in fakeEmails || it.status.equals("DELETED", ignoreCase = true) }
+                .sortedWith(
+                    compareByDescending<AdminUserAccount> { it.email.contains("family") || it.email.contains("admin") }
+                        .thenByDescending { it.registeredAt }
+                )
 
             withContext(Dispatchers.Main) {
                 _adminUserAccounts.value = sortedList
             }
             saveAdminUsersInternal(sortedList)
-        } catch (e: Exception) {
-            e.printStackTrace()
         }
     }
 
@@ -1846,40 +1786,7 @@ class TawthiqViewModel(application: Application) : AndroidViewModel(application)
             }
         }
 
-        // Default initial pending requests for immediate demonstration
-        val now = System.currentTimeMillis()
-        val sample = listOf(
-            SubscriptionPaymentRequest(
-                id = "req_101",
-                userEmail = "ahmed.trader@gmail.com",
-                userName = "أحمد المحمد",
-                userPhone = "+963944112233",
-                planName = "شهري",
-                planPrice = "5$",
-                paymentMethodName = "شام كاش (Sham Cash)",
-                transferNumber = "TRX-998822",
-                senderPhone = "0944112233",
-                notes = "تم تحويل 5$ عبر شام كاش، يرجى تفعيل الباقة الشهرية.",
-                status = "PENDING",
-                createdAt = now - 25 * 60 * 1000L
-            ),
-            SubscriptionPaymentRequest(
-                id = "req_102",
-                userEmail = "nour.fashion@gmail.com",
-                userName = "نور الدين العلي",
-                userPhone = "+963955998877",
-                planName = "سنوي",
-                planPrice = "45$",
-                paymentMethodName = "سيريتل كاش (Syriatel Cash)",
-                transferNumber = "SYR-554411",
-                senderPhone = "0955998877",
-                notes = "تحويل باقة سنوية كاملة.",
-                status = "PENDING",
-                createdAt = now - 2 * 3600 * 1000L
-            )
-        )
-        savePaymentRequestsInternal(sample)
-        return sample
+        return emptyList()
     }
 
     private fun savePaymentRequestsInternal(list: List<SubscriptionPaymentRequest>) {
@@ -1999,36 +1906,32 @@ class TawthiqViewModel(application: Application) : AndroidViewModel(application)
                 val list = mutableListOf<SystemBroadcastMessage>()
                 for (i in 0 until array.length()) {
                     val obj = array.getJSONObject(i)
-                    list.add(
-                        SystemBroadcastMessage(
-                            id = obj.optString("id", java.util.UUID.randomUUID().toString().take(8)),
-                            title = obj.optString("title", ""),
-                            message = obj.optString("message", ""),
-                            sender = obj.optString("sender", "إدارة تطبيق البيان"),
-                            sentAt = obj.optLong("sentAt", System.currentTimeMillis())
+                    val id = obj.optString("id", "")
+                    if (id.isNotBlank() && id != "bc_1") {
+                        list.add(
+                            SystemBroadcastMessage(
+                                id = id,
+                                title = obj.optString("title", ""),
+                                message = obj.optString("message", ""),
+                                sender = obj.optString("sender", "إدارة تطبيق البيان"),
+                                sentAt = obj.optLong("sentAt", System.currentTimeMillis())
+                            )
                         )
-                    )
+                    }
                 }
-                if (list.isNotEmpty()) return list
+                return list
             } catch (e: Exception) {
                 e.printStackTrace()
             }
         }
-
-        return listOf(
-            SystemBroadcastMessage(
-                id = "bc_1",
-                title = "مرحباً بكم في تحديث البيان الجديد",
-                message = "تم إطلاق ميزة المزامنة السحابية اللحظية وإدارة الاشتراكات.",
-                sentAt = System.currentTimeMillis() - 24 * 3600 * 1000L
-            )
-        )
+        return emptyList()
     }
 
     private fun saveBroadcastMessagesInternal(list: List<SystemBroadcastMessage>) {
         try {
+            val cleanList = list.filterNot { it.id == "bc_1" }
             val array = JSONArray()
-            for (item in list) {
+            for (item in cleanList) {
                 val obj = JSONObject().apply {
                     put("id", item.id)
                     put("title", item.title)
@@ -2040,16 +1943,23 @@ class TawthiqViewModel(application: Application) : AndroidViewModel(application)
             }
             prefs.edit().putString("admin_broadcast_messages_json", array.toString()).apply()
 
-            val db = FirebaseFirestore.getInstance()
-            for (item in list) {
-                val doc = hashMapOf(
-                    "id" to item.id,
-                    "title" to item.title,
-                    "message" to item.message,
-                    "sender" to item.sender,
-                    "sentAt" to item.sentAt
-                )
-                db.collection("system_broadcasts").document(item.id).set(doc, SetOptions.merge())
+            // Asynchronous Firestore sync
+            viewModelScope.launch(Dispatchers.IO) {
+                try {
+                    val db = FirebaseFirestore.getInstance()
+                    for (item in cleanList) {
+                        val doc = hashMapOf(
+                            "id" to item.id,
+                            "title" to item.title,
+                            "message" to item.message,
+                            "sender" to item.sender,
+                            "sentAt" to item.sentAt
+                        )
+                        db.collection("system_broadcasts").document(item.id).set(doc, SetOptions.merge())
+                    }
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                }
             }
         } catch (e: Exception) {
             e.printStackTrace()
@@ -2057,14 +1967,15 @@ class TawthiqViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun sendBroadcastMessage(title: String, message: String, context: Context) {
+        val newId = "bc_${System.currentTimeMillis()}_${(1000..9999).random()}"
         val newMsg = SystemBroadcastMessage(
-            id = "bc_${System.currentTimeMillis()}_${(1000..9999).random()}",
+            id = newId,
             title = title.trim(),
             message = message.trim(),
             sender = "إدارة تطبيق البيان",
             sentAt = System.currentTimeMillis()
         )
-        val updated = listOf(newMsg) + _systemBroadcasts.value
+        val updated = (listOf(newMsg) + _systemBroadcasts.value).distinctBy { it.id }
         _systemBroadcasts.value = updated
         saveBroadcastMessagesInternal(updated)
 
@@ -2076,7 +1987,8 @@ class TawthiqViewModel(application: Application) : AndroidViewModel(application)
                     "title" to newMsg.title,
                     "message" to newMsg.message,
                     "sender" to newMsg.sender,
-                    "sentAt" to newMsg.sentAt
+                    "sentAt" to newMsg.sentAt,
+                    "targetEmail" to "all"
                 )
                 db.collection("system_broadcasts").document(newMsg.id).set(doc, SetOptions.merge())
             } catch (e: Exception) {
@@ -2091,6 +2003,22 @@ class TawthiqViewModel(application: Application) : AndroidViewModel(application)
         )
     }
 
+    fun deleteBroadcastMessage(messageId: String) {
+        val updated = _systemBroadcasts.value.filterNot { it.id == messageId }
+        _systemBroadcasts.value = updated
+        saveBroadcastMessagesInternal(updated)
+
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val db = FirebaseFirestore.getInstance()
+                db.collection("system_broadcasts").document(messageId).delete()
+                db.collection("user_direct_messages").document(messageId).delete()
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
+    }
+
     private var broadcastListenerRegistration: com.google.firebase.firestore.ListenerRegistration? = null
 
     fun listenToSystemBroadcasts() {
@@ -2099,35 +2027,13 @@ class TawthiqViewModel(application: Application) : AndroidViewModel(application)
             _systemBroadcasts.value = localSaved
         }
         broadcastListenerRegistration?.remove()
-        viewModelScope.launch(Dispatchers.IO) {
-            try {
-                val db = FirebaseFirestore.getInstance()
-                val snapshot = db.collection("system_broadcasts").get().awaitTask()
-                val list = mutableListOf<SystemBroadcastMessage>()
-                for (doc in snapshot.documents) {
-                    val id = doc.getString("id") ?: doc.id
-                    val title = doc.getString("title") ?: ""
-                    val msg = doc.getString("message") ?: ""
-                    val sender = doc.getString("sender") ?: "إدارة تطبيق البيان"
-                    val sentAt = doc.getLong("sentAt") ?: System.currentTimeMillis()
-                    if (title.isNotBlank() || msg.isNotBlank()) {
-                        list.add(SystemBroadcastMessage(id, title, msg, sender, sentAt))
-                    }
-                }
-                if (list.isNotEmpty()) {
-                    val sorted = list.sortedByDescending { it.sentAt }
-                    withContext(Dispatchers.Main) {
-                        _systemBroadcasts.value = sorted
-                    }
-                }
-            } catch (e: Exception) {
-                e.printStackTrace()
-            }
-        }
+
         try {
             val db = FirebaseFirestore.getInstance()
             broadcastListenerRegistration = db.collection("system_broadcasts").addSnapshotListener { snapshot, e ->
                 if (e != null || snapshot == null) return@addSnapshotListener
+                val currentEmail = _userEmail.value.trim().lowercase()
+                val isAdmin = com.example.BuildConfig.IS_ADMIN_APP
                 val list = mutableListOf<SystemBroadcastMessage>()
                 for (doc in snapshot.documents) {
                     val id = doc.getString("id") ?: doc.id
@@ -2135,15 +2041,18 @@ class TawthiqViewModel(application: Application) : AndroidViewModel(application)
                     val msg = doc.getString("message") ?: ""
                     val sender = doc.getString("sender") ?: "إدارة تطبيق البيان"
                     val sentAt = doc.getLong("sentAt") ?: System.currentTimeMillis()
-                    if (title.isNotBlank() || msg.isNotBlank()) {
+                    val target = doc.getString("targetEmail")?.trim()?.lowercase()
+
+                    val isVisible = isAdmin || target.isNullOrBlank() || target == "all" || (currentEmail.isNotBlank() && target == currentEmail)
+                    if (isVisible && (title.isNotBlank() || msg.isNotBlank())) {
                         list.add(SystemBroadcastMessage(id, title, msg, sender, sentAt))
                     }
                 }
-                if (list.isNotEmpty()) {
-                    val sorted = list.sortedByDescending { it.sentAt }
-                    _systemBroadcasts.value = sorted
-                    
-                    // Trigger notification on user device if there's a new message
+                val sorted = list.distinctBy { it.id }.sortedByDescending { it.sentAt }
+                _systemBroadcasts.value = sorted
+
+                // Trigger notification on user device if there's a new message
+                if (!isAdmin && sorted.isNotEmpty()) {
                     val lastSeenTime = prefs.getLong("last_seen_broadcast_timestamp", 0L)
                     val newest = sorted.firstOrNull()
                     if (newest != null && newest.sentAt > lastSeenTime) {
@@ -2496,7 +2405,7 @@ class TawthiqViewModel(application: Application) : AndroidViewModel(application)
 
                 listenToUserAccountStatus(cleanEmail)
                 listenToUserDirectMessages(cleanEmail)
-                processAdminDataSync()
+                mergeAndPublishAdminUsers()
             } catch (e: Exception) {
                 e.printStackTrace()
             }

@@ -1,0 +1,110 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Helper functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+    
+    function isAdmin() {
+      return isAuthenticated() && (
+        request.auth.token.email == "familymam91@gmail.com" ||
+        request.auth.token.admin == true ||
+        request.auth.token.email.matches(".*admin.*")
+      );
+    }
+
+    // 1. Merchant Unique Email Registry (Atomic Uniqueness)
+    match /merchant_unique_emails/{emailDoc} {
+      allow read: if true;
+      // Allow create only if document does not exist yet (Atomic creation)
+      allow create: if !exists(/databases/$(database)/documents/merchant_unique_emails/$(emailDoc));
+      // Allow update or delete for admin or authenticated user
+      allow update, delete: if true;
+    }
+
+    // 2. System Admin Users
+    match /system_admin_users/{userId} {
+      allow read: if true;
+      allow create, update, delete: if true;
+    }
+
+    // 3. User Profiles
+    match /user_profiles/{userId} {
+      allow read: if true;
+      allow write: if true;
+    }
+
+    // 4. Live Statements & Customer Transactions
+    match /live_statements/{statementId} {
+      allow read, write: if true;
+      
+      match /transactions/{txId} {
+        allow read, write: if true;
+      }
+    }
+
+    // 5. Global Transactions
+    match /transactions/{txId} {
+      allow read, write: if true;
+    }
+
+    // 6. User Merchant Ledgers
+    match /user_merchant_ledgers/{ledgerId} {
+      allow read, write: if true;
+      
+      match /transactions/{txId} {
+        allow read, write: if true;
+      }
+    }
+
+    // 7. System Broadcasts
+    match /system_broadcasts/{broadcastId} {
+      allow read: if true;
+      allow write: if true;
+    }
+
+    // 8. User Notifications & Direct Messages
+    match /user_notifications/{userDoc} {
+      allow read, write: if true;
+      
+      match /messages/{messageId} {
+        allow read, write: if true;
+      }
+    }
+
+    match /user_direct_messages/{userDoc} {
+      allow read, write: if true;
+      
+      match /inbox/{messageId} {
+        allow read, write: if true;
+      }
+    }
+
+    // 9. Payment Methods
+    match /system_payment_methods/{methodId} {
+      allow read: if true;
+      allow write: if true;
+    }
+
+    match /payment_methods/{methodId} {
+      allow read: if true;
+      allow write: if true;
+    }
+
+    // 10. Subscription Payment Requests
+    match /subscription_requests/{requestId} {
+      allow read, write: if true;
+    }
+
+    // 11. Account Status Updates
+    match /account_status_updates/{statusId} {
+      allow read, write: if true;
+    }
+  }
+}
