@@ -550,20 +550,17 @@ private fun AdminUsersTab(
                 }
             }
         } else {
-            items(filteredUsers, key = { it.email }) { user ->
+            items(filteredUsers, key = { it.id + "_" + it.email }) { user ->
                 AdminUserCard(
                     user = user,
                     onActivate = {
                         viewModel.updateUserStatus(user.email, "ACTIVE")
-                        Toast.makeText(context, "تم تفعيل خدمة الحساب بنجاح ✓", Toast.LENGTH_SHORT).show()
                     },
                     onSuspend = {
                         viewModel.updateUserStatus(user.email, "SUSPENDED")
-                        Toast.makeText(context, "تم إيقاف الخدمة عن الحساب مؤقتاً ⏸", Toast.LENGTH_SHORT).show()
                     },
                     onBan = {
                         viewModel.updateUserStatus(user.email, "BANNED")
-                        Toast.makeText(context, "تم حظر الحساب 🚫", Toast.LENGTH_SHORT).show()
                     },
                     onDelete = { onDeleteClick(user) },
                     onPasswordClick = { onPasswordClick(user) },

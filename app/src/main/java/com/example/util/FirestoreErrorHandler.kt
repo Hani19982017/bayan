@@ -29,9 +29,11 @@ object FirestoreErrorHandler {
             if (current is FirebaseFirestoreException && current.code == FirebaseFirestoreException.Code.RESOURCE_EXHAUSTED) {
                 return true
             }
-            val msg = current.message ?: ""
+            val msg = (current.message ?: "") + " " + (current.localizedMessage ?: "")
             if (msg.contains("RESOURCE_EXHAUSTED", ignoreCase = true) ||
                 msg.contains("Quota exceeded", ignoreCase = true) ||
+                msg.contains("RESOURCE EXHAUSTED", ignoreCase = true) ||
+                msg.contains("exhausted", ignoreCase = true) ||
                 (msg.contains("quota", ignoreCase = true) && msg.contains("exceed", ignoreCase = true))
             ) {
                 return true
@@ -48,7 +50,7 @@ object FirestoreErrorHandler {
         return if (isQuotaExhausted(e)) {
             QUOTA_EXHAUSTED_MESSAGE
         } else {
-            val detail = e.localizedMessage ?: e.message ?: "حدث خطأ غير متوقع"
+            val detail = e.localizedMessage ?: e.message ?: "فشل الاتصال بقاعدة البيانات"
             if (actionName.isNotBlank()) "فشل $actionName: $detail" else "خطأ في قاعدة البيانات: $detail"
         }
     }
@@ -60,8 +62,14 @@ object FirestoreErrorHandler {
         val message = getErrorMessage(e, actionName)
         Log.e(TAG, "Firestore error [action=$actionName]: $message", e)
         try {
-            Handler(Looper.getMainLooper()).post {
+            if (Looper.myLooper() == Looper.getMainLooper()) {
                 Toast.makeText(context.applicationContext, message, Toast.LENGTH_LONG).show()
+            } else {
+                Handler(Looper.getMainLooper()).post {
+                    try {
+                        Toast.makeText(context.applicationContext, message, Toast.LENGTH_LONG).show()
+                    } catch (_: Exception) {}
+                }
             }
         } catch (ex: Exception) {
             Log.e(TAG, "Failed to display toast: ${ex.message}")
